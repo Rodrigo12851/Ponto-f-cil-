@@ -61,6 +61,28 @@ export function isPointInPolygon(
   return inside;
 }
 
+export async function fetchAddressFromCoords(lat: number, lng: number): Promise<string> {
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`);
+    const data = await res.json();
+    if (data && data.display_name) {
+      // Create a shorter, cleaner address string if possible
+      const addr = data.address;
+      if (addr) {
+        const road = addr.road || addr.pedestrian || addr.suburb || '';
+        const houseNumber = addr.house_number ? `, ${addr.house_number}` : '';
+        const city = addr.city || addr.town || addr.village || addr.municipality || '';
+        const state = addr.state ? ` - ${addr.state}` : '';
+        if (road) return `${road}${houseNumber} (${city}${state})`;
+      }
+      return data.display_name;
+    }
+  } catch (e) {
+    console.warn('Reverse geocoding error:', e);
+  }
+  return `GPS (${lat.toFixed(5)}, ${lng.toFixed(5)})`;
+}
+
 export async function getCurrentLocation(
   geofence: CompanyGeofence = DEFAULT_GEOFENCE,
   simulateExternal: boolean = false
@@ -80,7 +102,7 @@ export async function getCurrentLocation(
     // Attempt real browser GPS if supported
     if (typeof navigator !== 'undefined' && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
+        async (pos) => {
           const uLat = pos.coords.latitude;
           const uLng = pos.coords.longitude;
 
@@ -100,22 +122,28 @@ export async function getCurrentLocation(
 
           if (!inFence && geofence.squarePerimeter) {
             const { northLat, southLat, eastLng, westLng } = geofence.squarePerimeter;
-            const minLat = Math.min(southLat, northLat);
-            const maxLat = Math.max(southLat, northLat);
-            const minLng = Math.min(westLng, eastLng);
-            const maxLng = Math.max(westLng, eastLng);
+            const minLat = Math.min(southLat, northLat) - 0.0005; // ~50m tolerance
+            const maxLat = Math.max(southLat, northLat) + 0.0005;
+            const minLng = Math.min(westLng, eastLng) - 0.0005;
+            const maxLng = Math.max(westLng, eastLng) + 0.0005;
 
             inFence = uLat >= minLat && uLat <= maxLat && uLng >= minLng && uLng <= maxLng;
           }
 
-          if (!inFence && dist <= (geofence.radiusMeters || 200)) {
+          const toleranceRadius = Math.max(geofence.radiusMeters || 200, 150);
+          if (!inFence && dist <= toleranceRadius) {
             inFence = true;
+          }
+
+          let formattedAddress = geofence.address;
+          if (!inFence) {
+            formattedAddress = await fetchAddressFromCoords(uLat, uLng);
           }
 
           resolve({
             latitude: uLat,
             longitude: uLng,
-            address: inFence ? geofence.address : 'Sua Localização GPS Atual',
+            address: formattedAddress,
             inGeofence: inFence,
             distanceMeters: dist,
           });
@@ -130,7 +158,7 @@ export async function getCurrentLocation(
             distanceMeters: 0,
           });
         },
-        { timeout: 6000, maximumAge: 30000 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
       return;
     }

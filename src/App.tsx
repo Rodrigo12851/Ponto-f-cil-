@@ -381,6 +381,10 @@ export default function App() {
                 onOpenCamera={handleOpenCamera}
                 onDirectPunch={handleDirectPunch}
                 onRefreshLocation={fetchCurrentLocation}
+                onUpdateGeofence={(newGf) => {
+                  setGeofence(newGf);
+                  fetchCurrentLocation();
+                }}
               />
 
               {/* Punch Timeline for Selected Day */}

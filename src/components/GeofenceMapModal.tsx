@@ -119,6 +119,65 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const polygonRef = useRef<L.Polygon | null>(null);
   const markersRef = useRef<L.Marker[]>([]);
+  const userGpsMarkerRef = useRef<L.Marker | null>(null);
+
+  // Helper to render pulsing blue dot for user exact GPS position
+  const renderUserGpsMarker = (lat: number, lng: number) => {
+    if (!mapInstanceRef.current) return;
+
+    const blueDotHtml = `
+      <div style="position: relative; width: 32px; height: 32px; pointer-events: none; transform: translate(-16px, -16px);">
+        <div style="
+          position: absolute;
+          inset: 0;
+          background: rgba(37, 99, 235, 0.45);
+          border-radius: 50%;
+          animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+        "></div>
+        <div style="
+          position: absolute;
+          inset: 6px;
+          background: #2563eb;
+          border: 3px solid #ffffff;
+          border-radius: 50%;
+          box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+        "></div>
+        <div style="
+          position: absolute;
+          top: -24px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: #0f172a;
+          color: #60a5fa;
+          font-weight: 800;
+          font-size: 10px;
+          padding: 2px 7px;
+          border-radius: 6px;
+          white-space: nowrap;
+          border: 1px solid #3b82f6;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        ">
+          📍 Seu Ponto GPS Exato
+        </div>
+      </div>
+    `;
+
+    const blueDotIcon = L.divIcon({
+      className: 'user-live-gps-dot',
+      html: blueDotHtml,
+      iconSize: [0, 0],
+      iconAnchor: [0, 0],
+    });
+
+    if (userGpsMarkerRef.current) {
+      userGpsMarkerRef.current.setLatLng([lat, lng]);
+    } else {
+      userGpsMarkerRef.current = L.marker([lat, lng], {
+        icon: blueDotIcon,
+        zIndexOffset: 1000,
+      }).addTo(mapInstanceRef.current);
+    }
+  };
 
   // Calculate live dimensions from points state
   const widthMeters = getDistanceMeters(points[0].lat, points[0].lng, points[1].lat, points[1].lng);
@@ -436,6 +495,8 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const { latitude, longitude } = position.coords;
+
+        renderUserGpsMarker(latitude, longitude);
 
         const gpsPoints: Point2D[] = [
           { lat: latitude + offsetLat, lng: longitude - offsetLng, label: 'Ponto 1: Início Frente (Esq)' },

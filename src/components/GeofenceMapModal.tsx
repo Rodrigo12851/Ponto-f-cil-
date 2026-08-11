@@ -50,7 +50,9 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
   const [activePointIndex, setActivePointIndex] = useState<number>(0);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isLocating, setIsLocating] = useState<boolean>(false);
+  const [isSearchingAddress, setIsSearchingAddress] = useState<boolean>(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [isClickPlacementActive, setIsClickPlacementActive] = useState<boolean>(false);
   const [enforceGeofence, setEnforceGeofence] = useState<boolean>(geofence.enforceGeofence ?? true);
 
   // Default company center
@@ -94,6 +96,23 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
 
   const [points, setPoints] = useState<Point2D[]>(defaultPoints);
 
+  // References to keep state synced inside Leaflet event callbacks
+  const pointsRef = useRef<Point2D[]>(defaultPoints);
+  const activePointIndexRef = useRef<number>(0);
+  const isClickPlacementActiveRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    pointsRef.current = points;
+  }, [points]);
+
+  useEffect(() => {
+    activePointIndexRef.current = activePointIndex;
+  }, [activePointIndex]);
+
+  useEffect(() => {
+    isClickPlacementActiveRef.current = isClickPlacementActive;
+  }, [isClickPlacementActive]);
+
   // Map DOM reference
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -101,12 +120,35 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
   const polygonRef = useRef<L.Polygon | null>(null);
   const markersRef = useRef<L.Marker[]>([]);
 
-  // Calculate dimensions and perimeter from points
+  // Calculate live dimensions from points state
   const widthMeters = getDistanceMeters(points[0].lat, points[0].lng, points[1].lat, points[1].lng);
   const heightMeters = getDistanceMeters(points[0].lat, points[0].lng, points[3].lat, points[3].lng);
   const totalAreaM2 = widthMeters * heightMeters;
 
-  // Initialize Leaflet Map
+  // Helper to update all Leaflet layers when points array changes non-interactively
+  const syncLeafletLayers = (newPts: Point2D[]) => {
+    pointsRef.current = newPts;
+    setPoints(newPts);
+
+    const latLngs = newPts.map((p) => [p.lat, p.lng] as [number, number]);
+
+    if (polygonRef.current) {
+      polygonRef.current.setLatLngs(latLngs);
+    }
+
+    markersRef.current.forEach((marker, idx) => {
+      if (newPts[idx]) {
+        marker.setLatLng([newPts[idx].lat, newPts[idx].lng]);
+      }
+    });
+
+    if (mapInstanceRef.current && latLngs.length > 0) {
+      const bounds = L.latLngBounds(latLngs);
+      mapInstanceRef.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 19 });
+    }
+  };
+
+  // Initialize Leaflet Map ONCE on mount
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
@@ -116,9 +158,8 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
       mapInstanceRef.current = null;
     }
 
-    // Compute center from initial points if available
-    const initialLat = points.reduce((acc, p) => acc + p.lat, 0) / points.length;
-    const initialLng = points.reduce((acc, p) => acc + p.lng, 0) / points.length;
+    const initialLat = pointsRef.current.reduce((acc, p) => acc + p.lat, 0) / pointsRef.current.length;
+    const initialLng = pointsRef.current.reduce((acc, p) => acc + p.lng, 0) / pointsRef.current.length;
 
     const map = L.map(mapContainerRef.current, {
       center: [initialLat || centerLat, initialLng || centerLng],
@@ -128,7 +169,7 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
 
     mapInstanceRef.current = map;
 
-    // Tile Layer: Satellite (Esri) vs Standard (OpenStreetMap)
+    // Tile Layer
     const satelliteUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
     const osmUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 
@@ -140,95 +181,26 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
 
     tileLayerRef.current = tileLayer;
 
-    return () => {
-      map.remove();
-      mapInstanceRef.current = null;
-    };
-  }, []);
+    // Draw Polygon
+    const latLngs = pointsRef.current.map((p) => [p.lat, p.lng] as [number, number]);
+    polygonRef.current = L.polygon(latLngs, {
+      color: '#10b981',
+      weight: 3,
+      fillColor: '#10b981',
+      fillOpacity: 0.35,
+      dashArray: '6, 6',
+    }).addTo(map);
 
-  // Handle Leaflet Map resize updates
-  useEffect(() => {
-    const timer1 = setTimeout(() => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.invalidateSize();
-      }
-    }, 100);
-
-    const timer2 = setTimeout(() => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.invalidateSize();
-      }
-    }, 500);
-
-    const handleResize = () => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.invalidateSize();
-      }
-    };
-
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-      window.removeEventListener('resize', handleResize);
-    };
-  }, []);
-
-  // Update Tile Layer when mapType changes
-  useEffect(() => {
-    if (!mapInstanceRef.current) return;
-
-    if (tileLayerRef.current) {
-      mapInstanceRef.current.removeLayer(tileLayerRef.current);
-    }
-
-    const satelliteUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-    const osmUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-
-    const tileUrl = mapType === 'satellite' ? satelliteUrl : osmUrl;
-    tileLayerRef.current = L.tileLayer(tileUrl, {
-      maxZoom: 19,
-      attribution: mapType === 'satellite' ? 'Esri World Imagery' : 'OpenStreetMap',
-    }).addTo(mapInstanceRef.current);
-  }, [mapType]);
-
-  // Update Polygon & Draggable Markers on map when points state changes
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map) return;
-
-    // Remove existing markers
-    markersRef.current.forEach((m) => m.remove());
+    // Create 4 Draggable Markers
     markersRef.current = [];
-
-    // Remove existing polygon
-    if (polygonRef.current) {
-      polygonRef.current.remove();
-      polygonRef.current = null;
-    }
-
-    // Draw Polygon between the 4 points
-    const latLngs = points.map((p) => [p.lat, p.lng] as [number, number]);
-    if (latLngs.length >= 3) {
-      polygonRef.current = L.polygon(latLngs, {
-        color: '#10b981', // Emerald green border
-        weight: 3,
-        fillColor: '#10b981',
-        fillOpacity: 0.35,
-        dashArray: '6, 6',
-      }).addTo(map);
-    }
-
-    // Add draggable markers for each corner point
-    points.forEach((p, idx) => {
+    pointsRef.current.forEach((p, idx) => {
       const customIcon = L.divIcon({
         className: 'custom-leaflet-marker-wrapper',
         html: `
           <div style="
-            background: ${idx === activePointIndex ? '#059669' : '#0f172a'};
-            color: ${idx === activePointIndex ? '#ffffff' : '#34d399'};
-            border: 2px solid ${idx === activePointIndex ? '#34d399' : '#10b981'};
+            background: #0f172a;
+            color: #34d399;
+            border: 2px solid #10b981;
             border-radius: 12px;
             padding: 4px 8px;
             font-weight: 800;
@@ -267,18 +239,25 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
         draggable: true,
       }).addTo(map);
 
-      // On Dragging marker, update point coordinates in real time
+      // On Dragging: update polygon path directly in real-time WITHOUT re-creating Leaflet markers
       marker.on('drag', (e) => {
         const newLatLng = (e.target as L.Marker).getLatLng();
-        setPoints((prevPoints) => {
-          const next = [...prevPoints];
-          next[idx] = {
-            ...next[idx],
-            lat: newLatLng.lat,
-            lng: newLatLng.lng,
-          };
-          return next;
-        });
+        const updatedPts = [...pointsRef.current];
+        updatedPts[idx] = {
+          ...updatedPts[idx],
+          lat: newLatLng.lat,
+          lng: newLatLng.lng,
+        };
+        pointsRef.current = updatedPts;
+
+        if (polygonRef.current) {
+          polygonRef.current.setLatLngs(updatedPts.map((pt) => [pt.lat, pt.lng]));
+        }
+      });
+
+      // On Drag End: commit final position to React state
+      marker.on('dragend', () => {
+        setPoints([...pointsRef.current]);
       });
 
       marker.on('click', () => {
@@ -288,33 +267,160 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
       markersRef.current.push(marker);
     });
 
-    // Handle Map Clicks to move the currently selected active point
-    const handleMapClick = (e: L.LeafletMouseEvent) => {
+    // Handle Map Click ONLY if explicitly activated
+    map.on('click', (e: L.LeafletMouseEvent) => {
+      if (!isClickPlacementActiveRef.current) return; // Ignore map clicks if click placement is not enabled!
+
       const { lat, lng } = e.latlng;
-      setPoints((prev) => {
-        const next = [...prev];
-        next[activePointIndex] = {
-          ...next[activePointIndex],
-          lat,
-          lng,
-        };
-        return next;
-      });
-      // Move to next point automatically for quick 4-click setup
-      setActivePointIndex((prev) => (prev + 1) % 4);
+      const targetIdx = activePointIndexRef.current;
+
+      const updatedPts = [...pointsRef.current];
+      updatedPts[targetIdx] = {
+        ...updatedPts[targetIdx],
+        lat,
+        lng,
+      };
+
+      syncLeafletLayers(updatedPts);
+      setIsClickPlacementActive(false); // Turn off click mode after placing
+    });
+
+    return () => {
+      map.remove();
+      mapInstanceRef.current = null;
+    };
+  }, []);
+
+  // Handle Leaflet Map resize updates
+  useEffect(() => {
+    const timer1 = setTimeout(() => {
+      if (mapInstanceRef.current) mapInstanceRef.current.invalidateSize();
+    }, 100);
+
+    const timer2 = setTimeout(() => {
+      if (mapInstanceRef.current) mapInstanceRef.current.invalidateSize();
+    }, 500);
+
+    const handleResize = () => {
+      if (mapInstanceRef.current) mapInstanceRef.current.invalidateSize();
     };
 
-    map.off('click');
-    map.on('click', handleMapClick);
-  }, [points, activePointIndex]);
+    window.addEventListener('resize', handleResize);
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
 
-  // Reset to auto square around center
-  const handleResetPoints = () => {
-    setPoints(defaultPoints);
-    setActivePointIndex(0);
-    if (mapInstanceRef.current) {
-      mapInstanceRef.current.setView([centerLat, centerLng], 18);
+  // Update Tile Layer when mapType changes
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+
+    if (tileLayerRef.current) {
+      mapInstanceRef.current.removeLayer(tileLayerRef.current);
     }
+
+    const satelliteUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+    const osmUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+    const tileUrl = mapType === 'satellite' ? satelliteUrl : osmUrl;
+    tileLayerRef.current = L.tileLayer(tileUrl, {
+      maxZoom: 19,
+      attribution: mapType === 'satellite' ? 'Esri World Imagery' : 'OpenStreetMap',
+    }).addTo(mapInstanceRef.current);
+  }, [mapType]);
+
+  // Update marker icons when activePointIndex changes
+  useEffect(() => {
+    markersRef.current.forEach((marker, idx) => {
+      const isActive = idx === activePointIndex;
+      const customIcon = L.divIcon({
+        className: 'custom-leaflet-marker-wrapper',
+        html: `
+          <div style="
+            background: ${isActive ? '#059669' : '#0f172a'};
+            color: ${isActive ? '#ffffff' : '#34d399'};
+            border: 2px solid ${isActive ? '#34d399' : '#10b981'};
+            border-radius: 12px;
+            padding: 4px 8px;
+            font-weight: 800;
+            font-size: 11px;
+            white-space: nowrap;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transform: translate(-50%, -50%);
+            cursor: move;
+          ">
+            <span style="
+              background: #10b981;
+              color: #000000;
+              width: 18px;
+              height: 18px;
+              border-radius: 50%;
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              font-weight: 900;
+              font-size: 10px;
+            ">
+              ${idx + 1}
+            </span>
+            <span>Ponto ${idx + 1}</span>
+          </div>
+        `,
+        iconSize: [0, 0],
+        iconAnchor: [0, 0],
+      });
+      marker.setIcon(customIcon);
+    });
+  }, [activePointIndex]);
+
+  // Reset 4 points around initial center
+  const handleResetPoints = () => {
+    syncLeafletLayers(defaultPoints);
+    setActivePointIndex(0);
+    setIsClickPlacementActive(false);
+  };
+
+  // Search Address on Map via Nominatim Geocoding
+  const handleSearchAddress = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!address.trim()) return;
+
+    setIsSearchingAddress(true);
+    setLocationError(null);
+
+    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`)
+      .then((res) => res.json())
+      .then((data) => {
+        setIsSearchingAddress(false);
+        if (data && data.length > 0) {
+          const lat = parseFloat(data[0].lat);
+          const lon = parseFloat(data[0].lon);
+
+          const searchedPoints: Point2D[] = [
+            { lat: lat + offsetLat, lng: lon - offsetLng, label: 'Ponto 1: Início Frente (Esq)' },
+            { lat: lat + offsetLat, lng: lon + offsetLng, label: 'Ponto 2: Início Frente (Dir)' },
+            { lat: lat - offsetLat, lng: lon + offsetLng, label: 'Ponto 3: Final Fundo (Dir)' },
+            { lat: lat - offsetLat, lng: lon - offsetLng, label: 'Ponto 4: Final Fundo (Esq)' },
+          ];
+
+          if (data[0].display_name) {
+            setAddress(data[0].display_name);
+          }
+
+          syncLeafletLayers(searchedPoints);
+        } else {
+          setLocationError('Endereço não encontrado no mapa. Tente digitar nome da cidade ou rua.');
+        }
+      })
+      .catch(() => {
+        setIsSearchingAddress(false);
+        setLocationError('Erro ao buscar endereço no servidor de mapas.');
+      });
   };
 
   // Get User's Current GPS Location & center map/points around it
@@ -331,40 +437,17 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
       (position) => {
         const { latitude, longitude } = position.coords;
 
-        // Position 4 corner points around user's GPS position
         const gpsPoints: Point2D[] = [
-          {
-            lat: latitude + offsetLat,
-            lng: longitude - offsetLng,
-            label: 'Ponto 1: Início Frente (Esq)',
-          },
-          {
-            lat: latitude + offsetLat,
-            lng: longitude + offsetLng,
-            label: 'Ponto 2: Início Frente (Dir)',
-          },
-          {
-            lat: latitude - offsetLat,
-            lng: longitude + offsetLng,
-            label: 'Ponto 3: Final Fundo (Dir)',
-          },
-          {
-            lat: latitude - offsetLat,
-            lng: longitude - offsetLng,
-            label: 'Ponto 4: Final Fundo (Esq)',
-          },
+          { lat: latitude + offsetLat, lng: longitude - offsetLng, label: 'Ponto 1: Início Frente (Esq)' },
+          { lat: latitude + offsetLat, lng: longitude + offsetLng, label: 'Ponto 2: Início Frente (Dir)' },
+          { lat: latitude - offsetLat, lng: longitude + offsetLng, label: 'Ponto 3: Final Fundo (Dir)' },
+          { lat: latitude - offsetLat, lng: longitude - offsetLng, label: 'Ponto 4: Final Fundo (Esq)' },
         ];
 
-        setPoints(gpsPoints);
+        syncLeafletLayers(gpsPoints);
         setActivePointIndex(0);
         setIsLocating(false);
 
-        // Center Leaflet Map on user GPS position
-        if (mapInstanceRef.current) {
-          mapInstanceRef.current.setView([latitude, longitude], 19);
-        }
-
-        // Try reverse geocoding via OpenStreetMap Nominatim
         fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`)
           .then((res) => res.json())
           .then((data) => {
@@ -372,14 +455,12 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
               setAddress(data.display_name);
             }
           })
-          .catch(() => {
-            // Keep existing address if request fails
-          });
+          .catch(() => {});
       },
       (error) => {
         setIsLocating(false);
         if (error.code === error.PERMISSION_DENIED) {
-          setLocationError('Permissão de GPS negada. Por favor, permita o acesso à localização no navegador.');
+          setLocationError('Permissão de GPS negada. Permita o acesso à localização no navegador.');
         } else {
           setLocationError('Não foi possível obter sua localização GPS.');
         }
@@ -433,9 +514,7 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
   const toggleFullscreen = () => {
     setIsFullscreen((prev) => !prev);
     setTimeout(() => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.invalidateSize();
-      }
+      if (mapInstanceRef.current) mapInstanceRef.current.invalidateSize();
     }, 150);
   };
 
@@ -455,11 +534,11 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
-                <MapIcon className="w-3 h-3 text-emerald-600" /> Google Maps & Delimitação por Pontos
+                <MapIcon className="w-3 h-3 text-emerald-600" /> Delimitação de Terreno por GPS
               </span>
             </div>
             <h3 className="text-sm sm:text-base font-black text-slate-900 mt-0.5">
-              Marque os 4 Pontos do Terreno da Empresa no Mapa
+              Marque os 4 Pontos da Empresa no Mapa
             </h3>
           </div>
 
@@ -482,21 +561,31 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
           </div>
         </div>
 
-        {/* Address Input & Map Controls */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-1.5 mb-1.5 shrink-0">
-          <div className="md:col-span-5 relative">
-            <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-            <input
-              type="text"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="Endereço da sede da empresa..."
-              required
-              className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 font-semibold text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-            />
+        {/* Address Input & Map Search Controls */}
+        <form onSubmit={handleSearchAddress} className="grid grid-cols-1 md:grid-cols-12 gap-1.5 mb-1.5 shrink-0">
+          <div className="md:col-span-6 relative flex items-center gap-1">
+            <div className="relative flex-1">
+              <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Endereço da sede da empresa..."
+                required
+                className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 font-semibold text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isSearchingAddress}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-extrabold text-xs rounded-xl flex items-center gap-1 transition cursor-pointer shrink-0"
+              title="Buscar este endereço no mapa"
+            >
+              {isSearchingAddress ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Buscar'}
+            </button>
           </div>
 
-          <div className="md:col-span-7 flex items-center gap-1.5 justify-end flex-wrap">
+          <div className="md:col-span-6 flex items-center gap-1.5 justify-end flex-wrap">
             <button
               type="button"
               onClick={handleUseMyLocation}
@@ -509,7 +598,7 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
               ) : (
                 <Crosshair className="w-3.5 h-3.5 text-emerald-200" />
               )}
-              <span>{isLocating ? 'Obtendo GPS...' : 'Usar Minha Localização GPS'}</span>
+              <span>{isLocating ? 'Obtendo GPS...' : 'Usar Meu GPS Atual'}</span>
             </button>
 
             <button
@@ -529,7 +618,7 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
               type="button"
               onClick={handleResetPoints}
               className="px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-bold text-xs rounded-xl flex items-center gap-1 transition cursor-pointer"
-              title="Resetar 4 pontos"
+              title="Resetar os 4 pontos"
             >
               <RotateCcw className="w-3.5 h-3.5 text-slate-600" /> Reset
             </button>
@@ -543,7 +632,7 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
               <ExternalLink className="w-3.5 h-3.5" /> Google
             </a>
           </div>
-        </div>
+        </form>
 
         {locationError && (
           <div className="bg-rose-50 text-rose-700 border border-rose-200 p-2 rounded-xl text-xs font-bold mb-1.5 flex items-center gap-2 shrink-0">
@@ -553,34 +642,50 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
         )}
 
         {/* Click Step Selector Banner */}
-        <div className="bg-emerald-950 text-emerald-300 p-2 rounded-xl text-[11px] font-bold flex flex-wrap items-center justify-between gap-2 mb-1.5 border border-emerald-800 shrink-0">
-          <div className="flex items-center gap-1.5">
-            <MousePointerClick className="w-4 h-4 text-emerald-400 shrink-0 animate-bounce" />
+        <div className="bg-slate-900 text-white p-2 rounded-xl text-[11px] font-bold flex flex-wrap items-center justify-between gap-2 mb-1.5 border border-slate-800 shrink-0">
+          <div className="flex items-center gap-2">
+            <MousePointerClick className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>
-              Clique no mapa ou <strong>arraste os marcadores</strong> para delimitar o terreno:
+              Arraste os marcadores <strong className="text-emerald-400">(1, 2, 3, 4)</strong> diretamente no mapa para delimitar o terreno:
             </span>
           </div>
 
-          <div className="flex items-center gap-1">
-            {[0, 1, 2, 3].map((i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setActivePointIndex(i)}
-                className={`px-2 py-0.5 rounded-lg text-[10px] font-black transition cursor-pointer ${
-                  activePointIndex === i
-                    ? 'bg-emerald-400 text-slate-950 ring-2 ring-emerald-300 scale-105'
-                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                }`}
-              >
-                Ponto {i + 1}
-              </button>
-            ))}
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setIsClickPlacementActive(!isClickPlacementActive)}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition cursor-pointer border ${
+                isClickPlacementActive
+                  ? 'bg-amber-500 text-slate-950 border-amber-400 animate-pulse'
+                  : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+              }`}
+            >
+              {isClickPlacementActive ? '👉 MODO CLIQUE ATIVO (Clique no Mapa)' : '🎯 Mover no Clique'}
+            </button>
+
+            <div className="flex items-center gap-1">
+              {[0, 1, 2, 3].map((i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => {
+                    setActivePointIndex(i);
+                  }}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-black transition cursor-pointer ${
+                    activePointIndex === i
+                      ? 'bg-emerald-400 text-slate-950 ring-2 ring-emerald-300 scale-105'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                  }`}
+                >
+                  Ponto {i + 1}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
         {/* MAIN MAP CONTAINER WITH ADAPTIVE HEIGHT */}
-        <div className="relative w-full h-[250px] sm:h-[350px] md:h-[420px] rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-xl bg-slate-900 mb-1.5 shrink-0">
+        <div className="relative w-full h-[260px] sm:h-[350px] md:h-[420px] rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-xl bg-slate-900 mb-1.5 shrink-0">
           {/* Leaflet DOM Node */}
           <div ref={mapContainerRef} className="w-full h-full z-10"></div>
         </div>
@@ -589,7 +694,7 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
         <div className="bg-slate-50 p-2 rounded-2xl border border-slate-200 space-y-1 mb-1.5 text-xs shrink-0">
           <div className="flex flex-wrap items-center justify-between gap-2 font-bold text-slate-800">
             <span className="flex items-center gap-1.5 text-emerald-800 font-extrabold">
-              <Building className="w-4 h-4 text-emerald-600" /> Terreno Delimitado:
+              <Building className="w-4 h-4 text-emerald-600" /> Área Delimitada:
             </span>
             <div className="flex items-center gap-2">
               <span className="bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-lg border border-emerald-300 font-extrabold text-[11px]">
@@ -606,7 +711,12 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
               <button
                 key={idx}
                 type="button"
-                onClick={() => setActivePointIndex(idx)}
+                onClick={() => {
+                  setActivePointIndex(idx);
+                  if (mapInstanceRef.current) {
+                    mapInstanceRef.current.panTo([p.lat, p.lng]);
+                  }
+                }}
                 className={`p-1 rounded-xl border text-left transition cursor-pointer ${
                   activePointIndex === idx
                     ? 'bg-emerald-950 text-emerald-300 border-emerald-400 ring-2 ring-emerald-400/50'

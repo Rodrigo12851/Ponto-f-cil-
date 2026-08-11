@@ -215,10 +215,21 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
-    // Destroy existing instance if any
+    // Clean up existing map instance or container state if present
     if (mapInstanceRef.current) {
-      mapInstanceRef.current.remove();
+      try {
+        mapInstanceRef.current.off();
+        mapInstanceRef.current.remove();
+      } catch (e) {
+        console.warn('Map cleanup warning:', e);
+      }
       mapInstanceRef.current = null;
+    }
+
+    const container = mapContainerRef.current as any;
+    if (container) {
+      delete container._leaflet_id;
+      container.innerHTML = '';
     }
 
     const initialLat = pointsRef.current.reduce((acc, p) => acc + p.lat, 0) / pointsRef.current.length;
@@ -349,8 +360,20 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
     });
 
     return () => {
-      map.remove();
-      mapInstanceRef.current = null;
+      if (mapInstanceRef.current) {
+        try {
+          mapInstanceRef.current.off();
+          mapInstanceRef.current.remove();
+        } catch (err) {
+          console.warn('Leaflet map destroy error:', err);
+        }
+        mapInstanceRef.current = null;
+      }
+      if (mapContainerRef.current) {
+        const container = mapContainerRef.current as any;
+        delete container._leaflet_id;
+        container.innerHTML = '';
+      }
     };
   }, []);
 
@@ -381,7 +404,11 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
     if (!mapInstanceRef.current) return;
 
     if (tileLayerRef.current) {
-      mapInstanceRef.current.removeLayer(tileLayerRef.current);
+      try {
+        mapInstanceRef.current.removeLayer(tileLayerRef.current);
+      } catch (err) {
+        console.warn('Remove tile layer error:', err);
+      }
     }
 
     const satelliteUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';

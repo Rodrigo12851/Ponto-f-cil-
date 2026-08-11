@@ -78,8 +78,19 @@ export const LiveLocationMapModal: React.FC<LiveLocationMapModalProps> = ({
     if (!mapContainerRef.current) return;
 
     if (mapInstanceRef.current) {
-      mapInstanceRef.current.remove();
+      try {
+        mapInstanceRef.current.off();
+        mapInstanceRef.current.remove();
+      } catch (e) {
+        console.warn('Map cleanup warning:', e);
+      }
       mapInstanceRef.current = null;
+    }
+
+    const container = mapContainerRef.current as any;
+    if (container) {
+      delete container._leaflet_id;
+      container.innerHTML = '';
     }
 
     const map = L.map(mapContainerRef.current, {
@@ -178,8 +189,20 @@ export const LiveLocationMapModal: React.FC<LiveLocationMapModalProps> = ({
     map.fitBounds(bounds, { padding: [50, 50], maxZoom: 19 });
 
     return () => {
-      map.remove();
-      mapInstanceRef.current = null;
+      if (mapInstanceRef.current) {
+        try {
+          mapInstanceRef.current.off();
+          mapInstanceRef.current.remove();
+        } catch (err) {
+          console.warn('Leaflet cleanup error:', err);
+        }
+        mapInstanceRef.current = null;
+      }
+      if (mapContainerRef.current) {
+        const container = mapContainerRef.current as any;
+        delete container._leaflet_id;
+        container.innerHTML = '';
+      }
     };
   }, []);
 
@@ -187,7 +210,11 @@ export const LiveLocationMapModal: React.FC<LiveLocationMapModalProps> = ({
   useEffect(() => {
     if (!mapInstanceRef.current) return;
     if (tileLayerRef.current) {
-      mapInstanceRef.current.removeLayer(tileLayerRef.current);
+      try {
+        mapInstanceRef.current.removeLayer(tileLayerRef.current);
+      } catch (err) {
+        console.warn('Remove layer warning:', err);
+      }
     }
     const satelliteUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
     const osmUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';

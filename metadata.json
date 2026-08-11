@@ -1,0 +1,6 @@
+{
+  "name": "Ponto Facial - Gestão de Equipe",
+  "description": "Aplicativo completo de ponto eletrônico com verificação por câmera, geolocalização GPS, relatórios em tempo real e painel do gestor.",
+  "requestFramePermissions": ["camera", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

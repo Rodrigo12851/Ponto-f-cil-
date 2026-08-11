@@ -24,19 +24,29 @@ interface PunchListProps {
 export const PunchList: React.FC<PunchListProps> = ({ dayPonto, isToday }) => {
   const [activePhotoModal, setActivePhotoModal] = useState<PunchRecord | null>(null);
 
+  if (!dayPonto) {
+    return (
+      <div className="px-4 mb-20 text-center py-6 bg-white rounded-2xl border border-slate-100 text-xs font-semibold text-slate-400">
+        Nenhum registro encontrado para esta data.
+      </div>
+    );
+  }
+
+  const punches = dayPonto.punches || [];
+
   return (
     <div className="px-4 mb-20">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
           <Clock className="w-4 h-4 text-blue-600" />
-          Marcações de {dayPonto.displayDate} {isToday ? '(Hoje)' : ''}
+          Marcações de {dayPonto.displayDate || 'Hoje'} {isToday ? '(Hoje)' : ''}
         </h3>
         <span className="text-xs font-semibold text-slate-500">
-          Total: {formatHoursAndMinutes(dayPonto.workedMinutes)}
+          Total: {formatHoursAndMinutes(dayPonto.workedMinutes || 0)}
         </span>
       </div>
 
-      {dayPonto.punches.length === 0 ? (
+      {punches.length === 0 ? (
         <div className="bg-white rounded-2xl p-6 text-center border border-slate-100 shadow-xs">
           <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-2 text-slate-400">
             <Info className="w-6 h-6" />
@@ -50,7 +60,7 @@ export const PunchList: React.FC<PunchListProps> = ({ dayPonto, isToday }) => {
         </div>
       ) : (
         <div className="space-y-2.5">
-          {dayPonto.punches.map((punch, index) => (
+          {punches.map((punch, index) => (
             <React.Fragment key={punch.id}>
               <div
                 className="bg-white rounded-2xl p-3.5 border border-slate-100 shadow-xs hover:shadow-md transition-shadow flex items-center justify-between gap-3"
@@ -106,7 +116,7 @@ export const PunchList: React.FC<PunchListProps> = ({ dayPonto, isToday }) => {
 
               {/* Virtual Pre-assigned Lunch Card Inserted After ENTRADA if no manual lunch punch */}
               {punch.type === 'ENTRADA' &&
-                !dayPonto.punches.some(
+                !punches.some(
                   (p) => p.type === 'PAUSA_ALMOCO' || p.type === 'RETORNO_ALMOCO'
                 ) && (
                   <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3 text-xs flex items-center justify-between gap-2 my-1">

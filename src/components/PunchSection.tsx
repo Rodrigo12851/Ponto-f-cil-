@@ -42,12 +42,14 @@ export const PunchSection: React.FC<PunchSectionProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  const todayPonto = employee.days.find((d) => d.day === 10);
+  const employeeDays = employee?.days || [];
+  const todayPonto = employeeDays.find((d) => d.day === 10) || employeeDays[0];
   const workedMinutesToday = todayPonto?.workedMinutes || 0;
   const delayMinutesToday = todayPonto?.delayMinutes || 0;
 
-  const entradaPunch = todayPonto?.punches.find((p) => p.type === 'ENTRADA');
-  const saidaPunch = todayPonto?.punches.find((p) => p.type === 'SAIDA');
+  const punches = todayPonto?.punches || [];
+  const entradaPunch = punches.find((p) => p.type === 'ENTRADA');
+  const saidaPunch = punches.find((p) => p.type === 'SAIDA');
 
   const hasEntradaToday = !!entradaPunch;
   const hasSaidaToday = !!saidaPunch;

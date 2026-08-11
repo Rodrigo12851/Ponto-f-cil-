@@ -28,13 +28,30 @@ import { DrawerMenu } from './components/DrawerMenu';
 export default function App() {
   // Persistence state
   const [employees, setEmployees] = useState<Employee[]>(() => {
-    const saved = localStorage.getItem('sistema_ponto_funcionarios_v2');
-    return saved ? JSON.parse(saved) : INITIAL_EMPLOYEES;
+    try {
+      const saved = localStorage.getItem('sistema_ponto_funcionarios_v2');
+      if (!saved) return INITIAL_EMPLOYEES;
+      const parsed = JSON.parse(saved);
+      if (!Array.isArray(parsed) || parsed.length === 0) return INITIAL_EMPLOYEES;
+
+      return parsed.map((emp) => {
+        if (!emp.days || !Array.isArray(emp.days) || emp.days.length === 0) {
+          return { ...emp, days: INITIAL_EMPLOYEES[0].days };
+        }
+        return emp;
+      });
+    } catch {
+      return INITIAL_EMPLOYEES;
+    }
   });
 
   const [geofence, setGeofence] = useState<CompanyGeofence>(() => {
-    const saved = localStorage.getItem('sistema_ponto_geofence');
-    return saved ? JSON.parse(saved) : DEFAULT_GEOFENCE;
+    try {
+      const saved = localStorage.getItem('sistema_ponto_geofence');
+      return saved ? JSON.parse(saved) : DEFAULT_GEOFENCE;
+    } catch {
+      return DEFAULT_GEOFENCE;
+    }
   });
 
   const [currentEmpId, setCurrentEmpId] = useState<string>('emp-1');
@@ -77,8 +94,13 @@ export default function App() {
     setLocation(loc);
   };
 
-  const currentEmployee = employees.find((e) => e.id === currentEmpId) || employees[0];
-  const todayPonto = currentEmployee.days.find((d) => d.day === selectedDay) || currentEmployee.days[9];
+  const currentEmployee =
+    employees.find((e) => e.id === currentEmpId) || employees[0] || INITIAL_EMPLOYEES[0];
+  const employeeDays = currentEmployee?.days || INITIAL_EMPLOYEES[0].days;
+  const todayPonto =
+    employeeDays.find((d) => d.day === selectedDay) ||
+    employeeDays.find((d) => d.day === 10) ||
+    employeeDays[0];
 
   // Handle camera modal launch
   const handleOpenCamera = (type: PunchType) => {
@@ -345,7 +367,7 @@ export default function App() {
             <>
               {/* Day Calendar Selector Strip */}
               <CalendarStrip
-                days={currentEmployee.days}
+                days={employeeDays}
                 selectedDay={selectedDay}
                 today={10}
                 onSelectDay={(dayNum) => setSelectedDay(dayNum)}

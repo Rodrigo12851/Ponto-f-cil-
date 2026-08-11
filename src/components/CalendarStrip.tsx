@@ -35,6 +35,8 @@ export const CalendarStrip: React.FC<CalendarStripProps> = ({
     return names[date.getDay()];
   };
 
+  const safeDays = days || [];
+
   return (
     <div className="px-4 mb-4">
       <div className="flex items-center justify-between text-xs text-slate-500 font-medium mb-1.5 px-1">
@@ -49,7 +51,7 @@ export const CalendarStrip: React.FC<CalendarStripProps> = ({
         className="flex gap-2 overflow-x-auto py-2 px-1 scrollbar-none scroll-smooth snap-x"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
-        {days.map((d) => {
+        {safeDays.map((d) => {
           const isToday = d.day === today;
           const isSelected = d.day === selectedDay;
           const isFuture = d.day > today;

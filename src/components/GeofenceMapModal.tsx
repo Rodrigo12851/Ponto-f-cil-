@@ -17,6 +17,7 @@ import {
   Loader2,
   Crosshair,
   ShieldCheck,
+  Wifi,
 } from 'lucide-react';
 
 interface GeofenceMapModalProps {
@@ -54,6 +55,9 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
   const [locationError, setLocationError] = useState<string | null>(null);
   const [isClickPlacementActive, setIsClickPlacementActive] = useState<boolean>(false);
   const [enforceGeofence, setEnforceGeofence] = useState<boolean>(geofence.enforceGeofence ?? true);
+  const [wifiEnabled, setWifiEnabled] = useState<boolean>(geofence.wifiEnabled ?? true);
+  const [wifiSsid, setWifiSsid] = useState<string>(geofence.wifiSsid || 'WIFI_EMPRESA_SEDE');
+  const [wifiPassword, setWifiPassword] = useState<string>(geofence.wifiPassword || '');
 
   // Default company center
   const centerLat = geofence.latitude || -23.561684;
@@ -561,6 +565,9 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
       squarePerimeter,
       customPoints: points,
       enforceGeofence,
+      wifiEnabled,
+      wifiSsid,
+      wifiPassword,
     };
 
     try {
@@ -796,24 +803,80 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
           </div>
         </div>
 
-        {/* Restriction Enforce Switch */}
-        <div className="bg-emerald-900/10 border border-emerald-500/30 p-2 rounded-2xl flex items-center justify-between gap-3 text-xs mb-2 shrink-0">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-            <div>
-              <p className="font-extrabold text-slate-900 text-xs">Obrigatório Bater Ponto Apenas neste Local</p>
-              <p className="text-[10px] text-slate-500 font-medium">Quando ativado, os funcionários só conseguirão bater ponto dentro dessa área marcada.</p>
+        {/* Wi-Fi Validation & Restriction Settings */}
+        <div className="space-y-2 mb-2 shrink-0">
+          {/* Wi-Fi Setup Card */}
+          <div className="bg-blue-900/10 border border-blue-500/30 p-2.5 rounded-2xl text-xs space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Wifi className="w-4 h-4 text-blue-600 shrink-0" />
+                <div>
+                  <p className="font-extrabold text-slate-900 text-xs">Validação por Wi-Fi da Empresa (Conjunto)</p>
+                  <p className="text-[10px] text-slate-500 font-medium">
+                    Colaboradores conectados ao Wi-Fi da empresa conseguem bater ponto mesmo com variação de GPS.
+                  </p>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  checked={wifiEnabled}
+                  onChange={(e) => setWifiEnabled(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
             </div>
+
+            {wifiEnabled && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-blue-200/50">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-700 mb-0.5">
+                    Nome da Rede Wi-Fi (SSID):
+                  </label>
+                  <input
+                    type="text"
+                    value={wifiSsid}
+                    onChange={(e) => setWifiSsid(e.target.value)}
+                    placeholder="Ex: WIFI_EMPRESA_SEDE"
+                    className="w-full text-xs font-semibold px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-700 mb-0.5">
+                    Senha / Código de Confirmação do Wi-Fi (Opcional):
+                  </label>
+                  <input
+                    type="text"
+                    value={wifiPassword}
+                    onChange={(e) => setWifiPassword(e.target.value)}
+                    placeholder="Ex: 123456 ou empresa2026"
+                    className="w-full text-xs font-semibold px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+            )}
           </div>
-          <label className="relative inline-flex items-center cursor-pointer shrink-0">
-            <input
-              type="checkbox"
-              checked={enforceGeofence}
-              onChange={(e) => setEnforceGeofence(e.target.checked)}
-              className="sr-only peer"
-            />
-            <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
-          </label>
+
+          {/* Restriction Enforce Switch */}
+          <div className="bg-emerald-900/10 border border-emerald-500/30 p-2 rounded-2xl flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+              <div>
+                <p className="font-extrabold text-slate-900 text-xs">Obrigatório Bater Ponto Apenas no Local ou Wi-Fi</p>
+                <p className="text-[10px] text-slate-500 font-medium">Quando ativado, os funcionários devem estar na área GPS ou conectados ao Wi-Fi configurado.</p>
+              </div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                checked={enforceGeofence}
+                onChange={(e) => setEnforceGeofence(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+            </label>
+          </div>
         </div>
 
         {/* Submit Actions (Sticky at bottom on mobile) */}

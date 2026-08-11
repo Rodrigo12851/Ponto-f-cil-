@@ -6,6 +6,9 @@ export interface LocationData {
   address: string;
   inGeofence: boolean;
   distanceMeters?: number;
+  wifiConnected?: boolean;
+  connectedSsid?: string;
+  wifiValidated?: boolean;
 }
 
 export interface PunchRecord {
@@ -83,6 +86,9 @@ export interface CompanyGeofence {
   squarePerimeter?: GeofenceSquarePerimeter;
   customPoints?: Point2D[];
   enforceGeofence?: boolean;
+  wifiEnabled?: boolean;
+  wifiSsid?: string;
+  wifiPassword?: string;
 }
 
 export type ActiveTab = 'inicio' | 'historico' | 'relatorios' | 'admin' | 'espelho';

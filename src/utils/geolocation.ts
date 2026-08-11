@@ -8,6 +8,9 @@ export const DEFAULT_GEOFENCE: CompanyGeofence = {
   address: 'Av. Paulista, 1000 - Bela Vista, São Paulo - SP',
   shapeType: 'SQUARE',
   enforceGeofence: true,
+  wifiEnabled: true,
+  wifiSsid: 'WIFI_EMPRESA_SEDE',
+  wifiPassword: '',
   squarePerimeter: {
     northLat: -23.560684,
     southLat: -23.562684,

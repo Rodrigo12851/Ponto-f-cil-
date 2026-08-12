@@ -191,92 +191,104 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
               Menu de Navegação
             </p>
 
-            <button
-              onClick={() => {
-                onSelectTab('inicio');
-                onClose();
-              }}
-              className={`w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-3 transition ${
-                activeTab === 'inicio' ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'
-              }`}
-            >
-              <Home className="w-4 h-4 text-blue-600" /> 🏠 Início (Ponto Facial)
-            </button>
-
-            <button
-              onClick={() => {
-                onSelectTab('historico');
-                onClose();
-              }}
-              className={`w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-3 transition ${
-                activeTab === 'historico' ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'
-              }`}
-            >
-              <Calendar className="w-4 h-4 text-emerald-600" /> 📅 Histórico de Ponto
-            </button>
-
-            <button
-              onClick={() => {
-                onSelectTab('relatorios');
-                onClose();
-              }}
-              className={`w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-3 transition ${
-                activeTab === 'relatorios' ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'
-              }`}
-            >
-              <BarChart3 className="w-4 h-4 text-purple-600" /> 📊 Relatórios em Tempo Real
-            </button>
-
-            <button
-              onClick={() => {
-                onSelectTab('admin');
-                onToggleAdminView(true);
-                onClose();
-              }}
-              className={`w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-3 transition ${
-                isAdminView && activeTab === 'admin' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-50'
-              }`}
-            >
-              <Shield className="w-4 h-4 text-indigo-600" /> 🛡️ Painel do Gestor (Admin)
-            </button>
-
-            {/* Proprietary (Owner) Area Button - Hidden from Manager Role */}
             {currentUserRole === 'PROPRIETARIO' ? (
               <button
                 onClick={() => {
                   onSelectTab('proprietario');
                   onClose();
                 }}
-                className={`w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-xs flex items-center justify-between transition border ${
+                className={`w-full text-left px-3.5 py-3 rounded-xl font-bold text-xs flex items-center justify-between transition border ${
                   activeTab === 'proprietario'
-                    ? 'bg-amber-100/80 text-amber-950 border-amber-300 font-black'
-                    : 'bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 border-amber-200/80 hover:bg-amber-100/60'
+                    ? 'bg-amber-100 text-amber-950 border-amber-300 font-black shadow-sm'
+                    : 'bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
                   <Crown className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>👑 Área do Proprietário (Dono)</span>
+                  <span>👑 Cadastro de Gestores & Proprietário</span>
                 </div>
                 <span className="text-[9px] bg-amber-200 text-amber-950 font-black px-1.5 py-0.5 rounded uppercase">
                   Master
                 </span>
               </button>
+            ) : currentUserRole === 'GESTOR' ? (
+              <>
+                <button
+                  onClick={() => {
+                    onSelectTab('inicio');
+                    onClose();
+                  }}
+                  className={`w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-3 transition ${
+                    activeTab === 'inicio' ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <Home className="w-4 h-4 text-blue-600" /> 🏠 Visão Geral da Equipe
+                </button>
+
+                <button
+                  onClick={() => {
+                    onSelectTab('historico');
+                    onClose();
+                  }}
+                  className={`w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-3 transition ${
+                    activeTab === 'historico' ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <Calendar className="w-4 h-4 text-emerald-600" /> 📅 Histórico de Ponto
+                </button>
+
+                <button
+                  onClick={() => {
+                    onSelectTab('relatorios');
+                    onClose();
+                  }}
+                  className={`w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-3 transition ${
+                    activeTab === 'relatorios' ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <BarChart3 className="w-4 h-4 text-purple-600" /> 📊 Relatórios em Tempo Real
+                </button>
+
+                <button
+                  onClick={() => {
+                    onSelectTab('admin');
+                    onToggleAdminView(true);
+                    onClose();
+                  }}
+                  className={`w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-3 transition ${
+                    activeTab === 'admin' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <Shield className="w-4 h-4 text-indigo-600" /> 🛡️ Painel do Gestor (Admin)
+                </button>
+              </>
             ) : (
-              <button
-                onClick={() => {
-                  setPassError(false);
-                  setInputMasterPass('');
-                  setShowOwnerLoginModal(true);
-                }}
-                className="w-full text-left px-3.5 py-2 rounded-xl text-[11px] font-extrabold text-amber-800 bg-amber-50/60 hover:bg-amber-100/80 border border-amber-200/60 transition flex items-center justify-between"
-                title="Acesso exclusivo com senha mestra do proprietário"
-              >
-                <div className="flex items-center gap-2">
-                  <Lock className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Entrar como Proprietário</span>
-                </div>
-                <Key className="w-3 h-3 text-amber-500" />
-              </button>
+              /* COLABORADOR */
+              <>
+                <button
+                  onClick={() => {
+                    onSelectTab('inicio');
+                    onClose();
+                  }}
+                  className={`w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-3 transition ${
+                    activeTab === 'inicio' ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <Home className="w-4 h-4 text-blue-600" /> 🏠 Início (Ponto Facial)
+                </button>
+
+                <button
+                  onClick={() => {
+                    onSelectTab('historico');
+                    onClose();
+                  }}
+                  className={`w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-3 transition ${
+                    activeTab === 'historico' ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <Calendar className="w-4 h-4 text-emerald-600" /> 📅 Histórico de Ponto
+                </button>
+              </>
             )}
           </div>
 

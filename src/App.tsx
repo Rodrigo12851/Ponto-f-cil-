@@ -507,91 +507,21 @@ export default function App() {
           onSelectEmployee={(emp) => setCurrentEmpId(emp.id)}
           isAdminView={isAdminView}
           onToggleAdminView={(admin) => {
-            setIsAdminView(admin);
-            if (admin) setActiveTab('admin');
-            else setActiveTab('inicio');
+            if (currentUserRole !== 'COLABORADOR') {
+              setIsAdminView(admin);
+              if (admin) setActiveTab('admin');
+              else setActiveTab('inicio');
+            }
           }}
           onOpenMenu={() => setIsDrawerOpen(true)}
           onUpdateEmployee={handleUpdateEmployee}
           onLogout={handleLogout}
+          currentUserRole={currentUserRole}
         />
 
         {/* Content Tabs Switcher */}
         <main className="flex-1">
-          {activeTab === 'inicio' && (
-            <>
-              {/* Day Calendar Selector Strip - Semper visível no topo */}
-              <CalendarStrip
-                days={employeeDays}
-                selectedDay={selectedDay}
-                today={todayNumber}
-                onSelectDay={(dayNum) => setSelectedDay(dayNum)}
-              />
-
-              {/* Se for modo Gestor, mostra o Painel com as bolinhas no quadrado dos colaboradores */}
-              {isAdminView ? (
-                <ManagerHomeDashboard
-                  employees={employees}
-                  selectedDay={selectedDay}
-                  onSelectEmployeeForHistory={(emp) => {
-                    setCurrentEmpId(emp.id);
-                    setActiveTab('historico');
-                  }}
-                  onSelectEmployeeForEspelho={(emp) => {
-                    setSelectedEmpForDetail(emp);
-                    setShowEspelhoModal(true);
-                  }}
-                />
-              ) : (
-                <>
-                  {/* Punch Registration Main Card - Apenas para Funcionário e no dia atual */}
-                  {selectedDay === todayNumber && (
-                    <PunchSection
-                      employee={currentEmployee}
-                      location={location}
-                      geofence={geofence}
-                      todayNumber={todayNumber}
-                      onOpenCamera={handleOpenCamera}
-                      onDirectPunch={handleDirectPunch}
-                      onRefreshLocation={fetchCurrentLocation}
-                      onUpdateGeofence={(newGf) => {
-                        setGeofence(newGf);
-                        fetchCurrentLocation();
-                      }}
-                    />
-                  )}
-
-                  {/* Punch Timeline for Selected Day */}
-                  <PunchList
-                    dayPonto={todayPonto}
-                    isToday={selectedDay === todayNumber}
-                  />
-                </>
-              )}
-            </>
-          )}
-
-          {activeTab === 'historico' && (
-            <HistoryTab
-              employee={currentEmployee}
-              employees={employees}
-              isAdmin={isAdminView}
-              onSelectEmployee={(emp) => setCurrentEmpId(emp.id)}
-              onRequestAdjustment={handleRequestAdjustment}
-              onOpenEspelhoPrint={() => setShowEspelhoModal(true)}
-            />
-          )}
-
-          {activeTab === 'relatorios' && (
-            <ReportsTab
-              employee={currentEmployee}
-              employees={employees}
-              isAdmin={isAdminView}
-              onOpenEspelhoPrint={() => setShowEspelhoModal(true)}
-            />
-          )}
-
-          {activeTab === 'proprietario' && (
+          {currentUserRole === 'PROPRIETARIO' ? (
             <OwnerPanel
               ownerSettings={ownerSettings}
               onUpdateOwnerSettings={handleUpdateOwnerSettings}
@@ -602,22 +532,97 @@ export default function App() {
                 setActiveTab('admin');
               }}
             />
-          )}
+          ) : (
+            <>
+              {activeTab === 'inicio' && (
+                <>
+                  {/* For Manager, show Manager Home Overview; For Employee, show Calendar & Punch Section */}
+                  {currentUserRole === 'GESTOR' || isAdminView ? (
+                    <ManagerHomeDashboard
+                      employees={employees}
+                      selectedDay={selectedDay}
+                      onSelectEmployeeForHistory={(emp) => {
+                        setCurrentEmpId(emp.id);
+                        setActiveTab('historico');
+                      }}
+                      onSelectEmployeeForEspelho={(emp) => {
+                        setSelectedEmpForDetail(emp);
+                        setShowEspelhoModal(true);
+                      }}
+                    />
+                  ) : (
+                    <>
+                      {/* Day Calendar Selector Strip */}
+                      <CalendarStrip
+                        days={employeeDays}
+                        selectedDay={selectedDay}
+                        today={todayNumber}
+                        onSelectDay={(dayNum) => setSelectedDay(dayNum)}
+                      />
 
-          {activeTab === 'admin' && (
-            <AdminDashboard
-              employees={employees}
-              geofence={geofence}
-              onUpdateGeofence={(newFence) => setGeofence(newFence)}
-              onAddEmployee={handleAddEmployee}
-              onUpdateEmployee={handleUpdateEmployee}
-              onApprovePunch={() => {}}
-              onSelectEmployeeForDetail={(emp) => {
-                setSelectedEmpForDetail(emp);
-                setShowEspelhoModal(true);
-              }}
-              onUpdateEmployeeLunch={handleUpdateEmployeeLunch}
-            />
+                      {/* Punch Registration Main Card - Employee Only */}
+                      {selectedDay === todayNumber && (
+                        <PunchSection
+                          employee={currentEmployee}
+                          location={location}
+                          geofence={geofence}
+                          todayNumber={todayNumber}
+                          onOpenCamera={handleOpenCamera}
+                          onDirectPunch={handleDirectPunch}
+                          onRefreshLocation={fetchCurrentLocation}
+                          onUpdateGeofence={(newGf) => {
+                            setGeofence(newGf);
+                            fetchCurrentLocation();
+                          }}
+                        />
+                      )}
+
+                      {/* Punch Timeline for Selected Day */}
+                      <PunchList
+                        dayPonto={todayPonto}
+                        isToday={selectedDay === todayNumber}
+                      />
+                    </>
+                  )}
+                </>
+              )}
+
+              {activeTab === 'historico' && (
+                <HistoryTab
+                  employee={currentEmployee}
+                  employees={employees}
+                  isAdmin={currentUserRole === 'GESTOR' || isAdminView}
+                  onSelectEmployee={(emp) => setCurrentEmpId(emp.id)}
+                  onRequestAdjustment={handleRequestAdjustment}
+                  onOpenEspelhoPrint={currentUserRole === 'GESTOR' || isAdminView ? () => setShowEspelhoModal(true) : undefined}
+                />
+              )}
+
+              {activeTab === 'relatorios' && (currentUserRole === 'GESTOR' || isAdminView) && (
+                <ReportsTab
+                  employee={currentEmployee}
+                  employees={employees}
+                  isAdmin={true}
+                  onOpenEspelhoPrint={() => setShowEspelhoModal(true)}
+                />
+              )}
+
+              {activeTab === 'admin' && (currentUserRole === 'GESTOR' || isAdminView) && (
+                <AdminDashboard
+                  employees={employees}
+                  geofence={geofence}
+                  onUpdateGeofence={(newFence) => setGeofence(newFence)}
+                  onAddEmployee={handleAddEmployee}
+                  onUpdateEmployee={handleUpdateEmployee}
+                  onApprovePunch={() => {}}
+                  onSelectEmployeeForDetail={(emp) => {
+                    setSelectedEmpForDetail(emp);
+                    setShowEspelhoModal(true);
+                  }}
+                  onUpdateEmployeeLunch={handleUpdateEmployeeLunch}
+                />
+              )}
+            </>
           )}
         </main>
 
@@ -631,7 +636,7 @@ export default function App() {
         />
 
         {/* Espelho de Ponto Printable View */}
-        {showEspelhoModal && (
+        {showEspelhoModal && isAdminView && (
           <EspelhoPontoPrint
             employee={selectedEmpForDetail || currentEmployee}
             onClose={() => {
@@ -672,6 +677,7 @@ export default function App() {
             else setIsAdminView(false);
           }}
           isAdminView={isAdminView}
+          currentUserRole={currentUserRole}
         />
 
       </div>

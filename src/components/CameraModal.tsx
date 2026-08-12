@@ -70,6 +70,18 @@ export const CameraModal: React.FC<CameraModalProps> = ({
     };
   }, [isOpen]);
 
+  // Ensure video element receives stream whenever it mounts or when capturedImage becomes null
+  useEffect(() => {
+    if (isOpen && !capturedImage && videoRef.current) {
+      if (stream && stream.active) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch((err) => console.warn('Video play error:', err));
+      } else {
+        startCamera();
+      }
+    }
+  }, [isOpen, capturedImage, stream]);
+
   const startCamera = async () => {
     setCameraError(null);
     setIsAiChecking(true);
@@ -86,6 +98,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
       setStream(mediaStream);
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        videoRef.current.play().catch(() => {});
       }
     } catch (err: any) {
       console.warn('Camera stream error:', err);
@@ -100,6 +113,12 @@ export const CameraModal: React.FC<CameraModalProps> = ({
       stream.getTracks().forEach((track) => track.stop());
       setStream(null);
     }
+  };
+
+  const handleRetakePhoto = () => {
+    setCapturedImage(null);
+    stopCamera();
+    startCamera();
   };
 
   const handleTakeSnapshot = () => {
@@ -265,7 +284,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
         ) : (
           <div className="w-full flex gap-3">
             <button
-              onClick={() => setCapturedImage(null)}
+              onClick={handleRetakePhoto}
               className="flex-1 py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-sm rounded-2xl transition cursor-pointer border border-slate-700"
             >
               Tirar Outra

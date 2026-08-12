@@ -1,24 +1,43 @@
 import React from 'react';
-import { ActiveTab } from '../types';
-import { Home, Calendar, BarChart3, Shield } from 'lucide-react';
+import { ActiveTab, UserRole } from '../types';
+import { Home, Calendar, BarChart3, Shield, Crown } from 'lucide-react';
 
 interface NavbarProps {
   activeTab: ActiveTab;
   onSelectTab: (tab: ActiveTab) => void;
   isAdminView: boolean;
+  currentUserRole?: UserRole;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   onSelectTab,
   isAdminView,
+  currentUserRole = 'COLABORADOR',
 }) => {
-  const tabs = [
-    { id: 'inicio', label: 'Início', icon: Home },
-    { id: 'historico', label: 'Histórico', icon: Calendar },
-    { id: 'relatorios', label: 'Relatórios', icon: BarChart3 },
-    { id: 'admin', label: 'Admin', icon: Shield },
+  if (currentUserRole === 'PROPRIETARIO') {
+    return (
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 text-white backdrop-blur-md border-t border-amber-500/30 shadow-2xl py-2 px-3 notranslate" translate="no">
+        <div className="max-w-md mx-auto flex items-center justify-center">
+          <div className="flex items-center gap-2 py-1.5 px-4 bg-amber-500/15 text-amber-300 font-extrabold text-xs rounded-2xl border border-amber-500/30">
+            <Crown className="w-4 h-4 text-amber-400" />
+            <span>Painel do Proprietário • Gestão de Gestores</span>
+          </div>
+        </div>
+      </nav>
+    );
+  }
+
+  const isManager = currentUserRole === 'GESTOR' || isAdminView;
+
+  const allTabs = [
+    { id: 'inicio', label: 'Início', icon: Home, show: true },
+    { id: 'historico', label: 'Histórico', icon: Calendar, show: true },
+    { id: 'relatorios', label: 'Relatórios', icon: BarChart3, show: isManager },
+    { id: 'admin', label: 'Admin', icon: Shield, show: isManager },
   ] as const;
+
+  const tabs = allTabs.filter((tab) => tab.show);
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/80 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] pt-2 pb-3 sm:pb-2.5 px-3 notranslate" translate="no">

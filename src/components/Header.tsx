@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { Shield, User, Clock, MapPin, Bell, Menu, Sparkles, Camera, Check, Loader2, LogOut } from 'lucide-react';
-import { Employee } from '../types';
+import { Employee, UserRole } from '../types';
 import { getBrazilianFullDate } from '../utils/timeFormatters';
 import { processProfilePhoto } from '../utils/imageHelper';
 
@@ -13,6 +13,7 @@ interface HeaderProps {
   onOpenMenu: () => void;
   onUpdateEmployee?: (employeeId: string, updatedData: Partial<Employee>) => void;
   onLogout?: () => void;
+  currentUserRole?: UserRole;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -24,6 +25,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenMenu,
   onUpdateEmployee,
   onLogout,
+  currentUserRole = 'COLABORADOR',
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -87,42 +89,46 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* User selector & Mode switcher */}
+          {/* User selector & Mode switcher - Available only for Manager/Owner */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {!isAdminView ? (
-              <div className="relative">
-                <select
-                  value={currentEmployee.id}
-                  onChange={(e) => {
-                    const emp = employees.find((x) => x.id === e.target.value);
-                    if (emp) onSelectEmployee(emp);
-                  }}
-                  className="bg-white/15 text-white text-[11px] sm:text-xs font-semibold py-1.5 pl-2 pr-6 max-w-[95px] xs:max-w-[120px] sm:max-w-[200px] rounded-xl border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40 cursor-pointer backdrop-blur-md appearance-none truncate"
-                >
-                  {employees.map((emp) => (
-                    <option key={emp.id} value={emp.id} className="text-slate-900 font-medium">
-                      👤 {emp.name} ({emp.department})
-                    </option>
-                  ))}
-                </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1.5 text-white/80">
-                  <User className="w-3 h-3" />
-                </div>
-              </div>
-            ) : null}
+            {currentUserRole !== 'COLABORADOR' && (
+              <>
+                {!isAdminView ? (
+                  <div className="relative">
+                    <select
+                      value={currentEmployee.id}
+                      onChange={(e) => {
+                        const emp = employees.find((x) => x.id === e.target.value);
+                        if (emp) onSelectEmployee(emp);
+                      }}
+                      className="bg-white/15 text-white text-[11px] sm:text-xs font-semibold py-1.5 pl-2 pr-6 max-w-[95px] xs:max-w-[120px] sm:max-w-[200px] rounded-xl border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40 cursor-pointer backdrop-blur-md appearance-none truncate"
+                    >
+                      {employees.map((emp) => (
+                        <option key={emp.id} value={emp.id} className="text-slate-900 font-medium">
+                          👤 {emp.name} ({emp.department})
+                        </option>
+                      ))}
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1.5 text-white/80">
+                      <User className="w-3 h-3" />
+                    </div>
+                  </div>
+                ) : null}
 
-            <button
-              onClick={() => onToggleAdminView(!isAdminView)}
-              className={`px-2 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-semibold flex items-center gap-1 sm:gap-1.5 transition-all shadow-sm cursor-pointer shrink-0 ${
-                isAdminView
-                  ? 'bg-blue-600 hover:bg-blue-500 text-white border border-blue-400/30'
-                  : 'bg-slate-900/40 hover:bg-slate-900/60 text-white border border-white/20'
-              }`}
-            >
-              <Shield className="w-3.5 h-3.5 shrink-0" />
-              <span className="hidden sm:inline">{isAdminView ? 'Modo Funcionário' : 'Modo Gestor'}</span>
-              <span className="inline sm:hidden">{isAdminView ? 'Funcionário' : 'Gestor'}</span>
-            </button>
+                <button
+                  onClick={() => onToggleAdminView(!isAdminView)}
+                  className={`px-2 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-semibold flex items-center gap-1 sm:gap-1.5 transition-all shadow-sm cursor-pointer shrink-0 ${
+                    isAdminView
+                      ? 'bg-blue-600 hover:bg-blue-500 text-white border border-blue-400/30'
+                      : 'bg-slate-900/40 hover:bg-slate-900/60 text-white border border-white/20'
+                  }`}
+                >
+                  <Shield className="w-3.5 h-3.5 shrink-0" />
+                  <span className="hidden sm:inline">{isAdminView ? 'Modo Funcionário' : 'Modo Gestor'}</span>
+                  <span className="inline sm:hidden">{isAdminView ? 'Funcionário' : 'Gestor'}</span>
+                </button>
+              </>
+            )}
 
             {onLogout && (
               <button
@@ -137,8 +143,38 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* User Info Header */}
-        {!isAdminView ? (
+        {/* User Info Header based on currentUserRole */}
+        {currentUserRole === 'PROPRIETARIO' ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-amber-500/30 min-w-0">
+            <div className="min-w-0">
+              <h2 className="text-xs sm:text-sm md:text-base font-extrabold leading-tight flex items-center gap-2 text-amber-300 truncate">
+                <span>👑 Acesso Master do Proprietário</span>
+              </h2>
+              <p className="text-[11px] sm:text-xs text-amber-100/80 font-medium truncate">
+                Gestão de senhas mestras e credenciais de acesso dos gestores da empresa
+              </p>
+            </div>
+            <div className="text-[10px] sm:text-xs text-amber-200 font-bold bg-amber-950/60 px-3 py-1 rounded-xl border border-amber-500/40 flex items-center gap-1.5 shrink-0">
+              <Shield className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>Sede Principal</span>
+            </div>
+          </div>
+        ) : currentUserRole === 'GESTOR' ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-700/60 min-w-0">
+            <div className="min-w-0">
+              <h2 className="text-xs sm:text-sm md:text-base font-bold leading-tight flex items-center gap-2 truncate">
+                <span>Painel do Gestor de Equipe</span> <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+              </h2>
+              <p className="text-[11px] sm:text-xs text-slate-300 font-medium truncate">
+                Monitoramento de presença, mapa de geolocalização e relatórios em tempo real
+              </p>
+            </div>
+            <div className="text-[10px] sm:text-xs text-slate-300 font-medium bg-slate-800/80 px-2.5 py-1 rounded-xl border border-slate-700 flex items-center gap-1.5 shrink-0">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+              <span>{employees.filter((e) => e.isOnline).length} de {employees.length} colaboradores ativos</span>
+            </div>
+          </div>
+        ) : (
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/10 min-w-0">
             <div className="flex items-center gap-2.5 min-w-0">
               {/* Profile Avatar with Camera Upload Badge */}
@@ -175,7 +211,7 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <h2 className="text-xs sm:text-sm md:text-base font-extrabold leading-tight truncate">
-                    Olá, {currentEmployee.name}!
+                    <span>Olá, {currentEmployee.name}!</span>
                   </h2>
                   <button
                     type="button"
@@ -203,21 +239,6 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="text-right text-[10px] sm:text-xs text-blue-100/90 font-medium flex items-center gap-1 bg-black/10 px-2.5 py-1 rounded-xl border border-white/10 shrink-0">
               <Clock className="w-3 h-3 text-blue-200 shrink-0" />
               <span className="truncate">{getBrazilianFullDate()}</span>
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-700/60 min-w-0">
-            <div className="min-w-0">
-              <h2 className="text-xs sm:text-sm md:text-base font-semibold leading-tight flex items-center gap-2 truncate">
-                Painel do Gestor de Equipe <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-              </h2>
-              <p className="text-[11px] sm:text-xs text-slate-300 font-medium truncate">
-                Monitoramento de presença, mapa de geolocalização e relatórios em tempo real
-              </p>
-            </div>
-            <div className="text-[10px] sm:text-xs text-slate-300 font-medium bg-slate-800/80 px-2.5 py-1 rounded-xl border border-slate-700 flex items-center gap-1.5 shrink-0">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-              <span>{employees.filter((e) => e.isOnline).length} de {employees.length} colaboradores ativos</span>
             </div>
           </div>
         )}

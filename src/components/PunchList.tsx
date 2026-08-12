@@ -14,6 +14,7 @@ import {
   X,
   Camera,
   Info,
+  Wifi,
 } from 'lucide-react';
 
 interface PunchListProps {
@@ -84,6 +85,13 @@ export const PunchList: React.FC<PunchListProps> = ({ dayPonto, isToday }) => {
                       <span className="text-xs font-bold text-slate-800">
                         {punch.timeFormatted}
                       </span>
+
+                      {punch.location?.isTrustedWifi && (
+                        <span className="text-[9px] bg-blue-100 text-blue-900 border border-blue-200 font-extrabold px-1.5 py-0.5 rounded flex items-center gap-1">
+                          <Wifi className="w-2.5 h-2.5 text-blue-600" />
+                          Wi-Fi Confiável ({punch.location.trustedWifiName || punch.location.connectedSsid})
+                        </span>
+                      )}
                     </div>
 
                     {punch.location && (

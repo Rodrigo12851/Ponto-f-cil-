@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
+import { Clock, Calendar as CalendarIcon } from 'lucide-react';
 import {
   Employee,
   CompanyGeofence,
@@ -8,10 +9,13 @@ import {
   PunchType,
   PunchRecord,
   LunchMode,
+  UserRole,
+  OwnerSettings,
 } from './types';
 import { INITIAL_EMPLOYEES } from './data/initialData';
 import { DEFAULT_GEOFENCE, getCurrentLocation } from './utils/geolocation';
 import { calculateDayWorkedMinutes } from './utils/timeFormatters';
+import { getOwnerSettings, saveOwnerSettings } from './utils/ownerStorage';
 
 import { Header } from './components/Header';
 import { CalendarStrip } from './components/CalendarStrip';
@@ -20,12 +24,21 @@ import { PunchList } from './components/PunchList';
 import { HistoryTab } from './components/HistoryTab';
 import { ReportsTab } from './components/ReportsTab';
 import { AdminDashboard } from './components/AdminDashboard';
+import { OwnerPanel } from './components/OwnerPanel';
 import { CameraModal } from './components/CameraModal';
 import { EspelhoPontoPrint } from './components/EspelhoPontoPrint';
 import { Navbar } from './components/Navbar';
 import { DrawerMenu } from './components/DrawerMenu';
 
 export default function App() {
+  // Owner & Role state
+  const [ownerSettings, setOwnerSettings] = useState<OwnerSettings>(getOwnerSettings);
+  const [currentUserRole, setCurrentUserRole] = useState<UserRole>('PROPRIETARIO');
+
+  const handleUpdateOwnerSettings = (newSettings: OwnerSettings) => {
+    setOwnerSettings(newSettings);
+    saveOwnerSettings(newSettings);
+  };
   // Persistence state
   const [employees, setEmployees] = useState<Employee[]>(() => {
     try {
@@ -55,9 +68,35 @@ export default function App() {
   });
 
   const [currentEmpId, setCurrentEmpId] = useState<string>('emp-1');
-  const [selectedDay, setSelectedDay] = useState<number>(10); // Day 10 is Today
+  const [selectedDay, setSelectedDay] = useState<number>(() => new Date().getDate());
   const [activeTab, setActiveTab] = useState<ActiveTab>('inicio');
   const [isAdminView, setIsAdminView] = useState<boolean>(false);
+
+  // Dynamic today number
+  const todayNumber = new Date().getDate();
+
+  // Auto-return timer to Today (40 seconds)
+  const [autoReturnCountdown, setAutoReturnCountdown] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (selectedDay !== todayNumber) {
+      setAutoReturnCountdown(40);
+      const interval = setInterval(() => {
+        setAutoReturnCountdown((prev) => {
+          if (prev === null || prev <= 1) {
+            clearInterval(interval);
+            setSelectedDay(todayNumber);
+            return null;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      return () => clearInterval(interval);
+    } else {
+      setAutoReturnCountdown(null);
+    }
+  }, [selectedDay, todayNumber]);
 
   // Modals & Drawers
   const [isCameraOpen, setIsCameraOpen] = useState<boolean>(false);
@@ -65,6 +104,29 @@ export default function App() {
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
   const [showEspelhoModal, setShowEspelhoModal] = useState<boolean>(false);
   const [selectedEmpForDetail, setSelectedEmpForDetail] = useState<Employee | null>(null);
+
+  // Sync days when date changes or on load
+  useEffect(() => {
+    setEmployees((prev) =>
+      prev.map((emp) => {
+        let changed = false;
+        const updatedDays = emp.days.map((d) => {
+          if (d.day === todayNumber && d.status === 'FUTURO') {
+            changed = true;
+            return { ...d, status: 'EM_ANDAMENTO' as const };
+          }
+          if (d.day < todayNumber && d.status === 'FUTURO') {
+            changed = true;
+            const dateObj = new Date(new Date().getFullYear(), new Date().getMonth(), d.day);
+            const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+            return { ...d, status: isWeekend ? ('FOLGA' as const) : ('TRABALHADO' as const) };
+          }
+          return d;
+        });
+        return changed ? { ...emp, days: updatedDays } : emp;
+      })
+    );
+  }, [todayNumber]);
 
   // Live Location State
   const [location, setLocation] = useState<LocationData>({
@@ -99,7 +161,7 @@ export default function App() {
   const employeeDays = currentEmployee?.days || INITIAL_EMPLOYEES[0].days;
   const todayPonto =
     employeeDays.find((d) => d.day === selectedDay) ||
-    employeeDays.find((d) => d.day === 10) ||
+    employeeDays.find((d) => d.day === todayNumber) ||
     employeeDays[0];
 
   // Handle camera modal launch
@@ -111,6 +173,11 @@ export default function App() {
   // Direct Punch without requiring photo/camera
   const handleDirectPunch = (type: PunchType) => {
     const now = new Date();
+    const targetDay = todayNumber; // Live punch ALWAYS targets today!
+    if (selectedDay !== todayNumber) {
+      setSelectedDay(todayNumber);
+    }
+
     const timeFormatted = `${String(now.getHours()).padStart(2, '0')}:${String(
       now.getMinutes()
     ).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
@@ -129,7 +196,7 @@ export default function App() {
         if (emp.id !== currentEmployee.id) return emp;
 
         const updatedDays = emp.days.map((day) => {
-          if (day.day !== 10) return day;
+          if (day.day !== targetDay) return day;
 
           const updatedPunches = [...day.punches, newPunch];
           const workedMins = calculateDayWorkedMinutes(
@@ -176,6 +243,11 @@ export default function App() {
   // Handle successful snapshot capture
   const handlePunchCapture = (photoDataUrl: string) => {
     const now = new Date();
+    const targetDay = todayNumber; // Live punch ALWAYS targets today!
+    if (selectedDay !== todayNumber) {
+      setSelectedDay(todayNumber);
+    }
+
     const timeFormatted = `${String(now.getHours()).padStart(2, '0')}:${String(
       now.getMinutes()
     ).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
@@ -190,13 +262,12 @@ export default function App() {
       status: 'APROVADO',
     };
 
-    // Update current employee's punches for today (Day 10)
     setEmployees((prev) =>
       prev.map((emp) => {
         if (emp.id !== currentEmployee.id) return emp;
 
         const updatedDays = emp.days.map((day) => {
-          if (day.day !== 10) return day;
+          if (day.day !== targetDay) return day;
 
           const updatedPunches = [...day.punches, newPunch];
           const workedMins = calculateDayWorkedMinutes(updatedPunches);
@@ -283,20 +354,25 @@ export default function App() {
   // Admin: Add new employee
   const handleAddEmployee = (newEmpData: Partial<Employee>) => {
     const newId = `emp-${Date.now()}`;
+    const todayStr = new Date().toLocaleDateString('pt-BR');
     const newEmp: Employee = {
       id: newId,
       name: newEmpData.name || 'Novo Colaborador',
-      role: newEmpData.role || 'Analista',
+      role: newEmpData.role || 'Colaborador',
       department: newEmpData.department || 'Tecnologia',
       avatar:
         newEmpData.avatar ||
         'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
       email: newEmpData.email || 'colaborador@empresa.com.br',
-      cpf: '987.654.321-00',
-      pispasep: '987.65432.10-9',
-      admissionDate: new Date().toLocaleDateString('pt-BR'),
-      workSchedule: '08:00 às 17:00 (Seg a Sex)',
-      dailyTargetHours: 8,
+      cpf: newEmpData.cpf || '123.456.789-00',
+      pispasep: newEmpData.pispasep || '123.45678.90-1',
+      admissionDate: newEmpData.admissionDate || todayStr,
+      workSchedule: newEmpData.workSchedule || '08:00 às 17:00 (Seg a Sex)',
+      scheduleType: newEmpData.scheduleType || 'FIXO',
+      includesSundays: newEmpData.includesSundays ?? false,
+      dailyTargetHours: newEmpData.dailyTargetHours || 8,
+      weeklyTargetHours: newEmpData.weeklyTargetHours || 44,
+      bankModeEnabled: newEmpData.bankModeEnabled ?? true,
       isOnline: true,
       days: INITIAL_EMPLOYEES[0].days,
       bancoDeHorasMinutes: 0,
@@ -306,6 +382,22 @@ export default function App() {
     };
 
     setEmployees((prev) => [...prev, newEmp]);
+  };
+
+  // Admin: Update general employee registration & schedule data
+  const handleUpdateEmployee = (
+    employeeId: string,
+    updatedData: Partial<Employee>
+  ) => {
+    setEmployees((prev) =>
+      prev.map((emp) => {
+        if (emp.id !== employeeId) return emp;
+        return {
+          ...emp,
+          ...updatedData,
+        };
+      })
+    );
   };
 
   // Admin: Update employee lunch rules
@@ -359,6 +451,7 @@ export default function App() {
             else setActiveTab('inicio');
           }}
           onOpenMenu={() => setIsDrawerOpen(true)}
+          onUpdateEmployee={handleUpdateEmployee}
         />
 
         {/* Content Tabs Switcher */}
@@ -369,28 +462,31 @@ export default function App() {
               <CalendarStrip
                 days={employeeDays}
                 selectedDay={selectedDay}
-                today={10}
+                today={todayNumber}
                 onSelectDay={(dayNum) => setSelectedDay(dayNum)}
               />
 
-              {/* Punch Registration Main Card */}
-              <PunchSection
-                employee={currentEmployee}
-                location={location}
-                geofence={geofence}
-                onOpenCamera={handleOpenCamera}
-                onDirectPunch={handleDirectPunch}
-                onRefreshLocation={fetchCurrentLocation}
-                onUpdateGeofence={(newGf) => {
-                  setGeofence(newGf);
-                  fetchCurrentLocation();
-                }}
-              />
+              {/* Punch Registration Main Card - Exclusivo para o dia atual */}
+              {selectedDay === todayNumber && (
+                <PunchSection
+                  employee={currentEmployee}
+                  location={location}
+                  geofence={geofence}
+                  todayNumber={todayNumber}
+                  onOpenCamera={handleOpenCamera}
+                  onDirectPunch={handleDirectPunch}
+                  onRefreshLocation={fetchCurrentLocation}
+                  onUpdateGeofence={(newGf) => {
+                    setGeofence(newGf);
+                    fetchCurrentLocation();
+                  }}
+                />
+              )}
 
               {/* Punch Timeline for Selected Day */}
               <PunchList
                 dayPonto={todayPonto}
-                isToday={selectedDay === 10}
+                isToday={selectedDay === todayNumber}
               />
             </>
           )}
@@ -411,12 +507,26 @@ export default function App() {
             />
           )}
 
-          {(activeTab === 'admin' || isAdminView) && (
+          {activeTab === 'proprietario' && (
+            <OwnerPanel
+              ownerSettings={ownerSettings}
+              onUpdateOwnerSettings={handleUpdateOwnerSettings}
+              currentUserRole={currentUserRole}
+              onSwitchRole={(role) => setCurrentUserRole(role)}
+              onOpenManagerDashboard={() => {
+                setIsAdminView(true);
+                setActiveTab('admin');
+              }}
+            />
+          )}
+
+          {activeTab === 'admin' && (
             <AdminDashboard
               employees={employees}
               geofence={geofence}
               onUpdateGeofence={(newFence) => setGeofence(newFence)}
               onAddEmployee={handleAddEmployee}
+              onUpdateEmployee={handleUpdateEmployee}
               onApprovePunch={() => {}}
               onSelectEmployeeForDetail={(emp) => {
                 setSelectedEmpForDetail(emp);
@@ -455,13 +565,17 @@ export default function App() {
           onSelectTab={(tab) => {
             setActiveTab(tab);
             if (tab === 'admin') setIsAdminView(true);
-            else setIsAdminView(false);
+            else if (tab !== 'proprietario') setIsAdminView(false);
           }}
           currentEmployee={currentEmployee}
           employees={employees}
           onSelectEmployee={(emp) => setCurrentEmpId(emp.id)}
           isAdminView={isAdminView}
           onToggleAdminView={(admin) => setIsAdminView(admin)}
+          onUpdateEmployee={handleUpdateEmployee}
+          currentUserRole={currentUserRole}
+          onSwitchRole={(role) => setCurrentUserRole(role)}
+          masterPassword={ownerSettings.masterPassword}
         />
 
         {/* Bottom Navigation Navbar */}

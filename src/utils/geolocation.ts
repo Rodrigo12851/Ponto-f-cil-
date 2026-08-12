@@ -1,4 +1,5 @@
 import { CompanyGeofence, LocationData } from '../types';
+import { validatePunchLocationWithTrustedWifi } from './wifiValidator';
 
 export const DEFAULT_GEOFENCE: CompanyGeofence = {
   name: 'Sede da Empresa - São Paulo',
@@ -11,6 +12,9 @@ export const DEFAULT_GEOFENCE: CompanyGeofence = {
   wifiEnabled: true,
   wifiSsid: 'WIFI_EMPRESA_SEDE',
   wifiPassword: '',
+  trustedWifiEnabled: true,
+  trustedWifiSsid: 'WIFI_EMPRESA_SEDE',
+  trustedWifiSsids: ['WIFI_EMPRESA_SEDE', 'REDE_ESCRITORIO_5G', 'SUPERMERCADO_CAIXAS_WIFI'],
   squarePerimeter: {
     northLat: -23.560684,
     southLat: -23.562684,
@@ -88,17 +92,20 @@ export async function fetchAddressFromCoords(lat: number, lng: number): Promise<
 
 export async function getCurrentLocation(
   geofence: CompanyGeofence = DEFAULT_GEOFENCE,
-  simulateExternal: boolean = false
+  simulateExternal: boolean = false,
+  connectedSsid: string = 'WIFI_EMPRESA_SEDE'
 ): Promise<LocationData> {
   return new Promise((resolve) => {
     if (simulateExternal) {
-      resolve({
+      const rawExternalLoc: LocationData = {
         latitude: geofence.latitude + 0.02,
         longitude: geofence.longitude + 0.02,
         address: 'Rua das Flores, 341 (Trabalho Externo / Home Office)',
         inGeofence: false,
         distanceMeters: 480,
-      });
+      };
+      // If connected to a trusted Wi-Fi, validate location despite simulated GPS drift
+      resolve(validatePunchLocationWithTrustedWifi(rawExternalLoc, connectedSsid, geofence));
       return;
     }
 
@@ -143,23 +150,26 @@ export async function getCurrentLocation(
             formattedAddress = await fetchAddressFromCoords(uLat, uLng);
           }
 
-          resolve({
+          const rawLoc: LocationData = {
             latitude: uLat,
             longitude: uLng,
             address: formattedAddress,
             inGeofence: inFence,
             distanceMeters: dist,
-          });
+          };
+
+          resolve(validatePunchLocationWithTrustedWifi(rawLoc, connectedSsid, geofence));
         },
         () => {
           // Fallback to company headquarters center if GPS permission not granted
-          resolve({
+          const fallbackLoc: LocationData = {
             latitude: geofence.latitude,
             longitude: geofence.longitude,
             address: geofence.address,
             inGeofence: true,
             distanceMeters: 0,
-          });
+          };
+          resolve(validatePunchLocationWithTrustedWifi(fallbackLoc, connectedSsid, geofence));
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
@@ -167,12 +177,13 @@ export async function getCurrentLocation(
     }
 
     // Default to company headquarters
-    resolve({
+    const defaultLoc: LocationData = {
       latitude: geofence.latitude,
       longitude: geofence.longitude,
       address: geofence.address,
       inGeofence: true,
       distanceMeters: 0,
-    });
+    };
+    resolve(validatePunchLocationWithTrustedWifi(defaultLoc, connectedSsid, geofence));
   });
 }

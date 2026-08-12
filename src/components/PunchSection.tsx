@@ -1,13 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, MapPin, Camera, AlertTriangle, CheckCircle2, Navigation, Sparkles, Info, ShieldAlert, Crosshair, Map as MapIcon } from 'lucide-react';
+import { Clock, MapPin, Camera, AlertTriangle, CheckCircle2, Navigation, Sparkles, Info, ShieldAlert, Crosshair, Map as MapIcon, Wifi, ShieldCheck, Check } from 'lucide-react';
 import { Employee, LocationData, PunchType, CompanyGeofence } from '../types';
 import { formatMinutesToHours, formatHoursAndMinutes, getPunchTypeLabel } from '../utils/timeFormatters';
 import { LiveLocationMapModal } from './LiveLocationMapModal';
+import {
+  isDeviceConnectedToTrustedWifi,
+  getRegisteredTrustedSsids,
+  validatePunchLocationWithTrustedWifi,
+} from '../utils/wifiValidator';
 
 interface PunchSectionProps {
   employee: Employee;
   location: LocationData;
   geofence?: CompanyGeofence;
+  todayNumber?: number;
   onOpenCamera: (type: PunchType) => void;
   onDirectPunch?: (type: PunchType) => void;
   onRefreshLocation: () => void;
@@ -18,6 +24,7 @@ export const PunchSection: React.FC<PunchSectionProps> = ({
   employee,
   location,
   geofence,
+  todayNumber,
   onOpenCamera,
   onDirectPunch,
   onRefreshLocation,
@@ -30,6 +37,17 @@ export const PunchSection: React.FC<PunchSectionProps> = ({
   const [selectedPunchType, setSelectedPunchType] = useState<PunchType>('ENTRADA');
   const [geofenceBlockAlert, setGeofenceBlockAlert] = useState<boolean>(false);
   const [showLiveMapModal, setShowLiveMapModal] = useState<boolean>(false);
+  const [currentSsid, setCurrentSsid] = useState<string>(
+    location.connectedSsid || geofence?.wifiSsid || geofence?.trustedWifiSsid || 'WIFI_EMPRESA_SEDE'
+  );
+
+  // Evaluate Trusted Wi-Fi validation
+  const wifiCheck = isDeviceConnectedToTrustedWifi(currentSsid, geofence);
+  const effectiveLocation = validatePunchLocationWithTrustedWifi(
+    location,
+    currentSsid,
+    geofence
+  );
 
   // Live timer update
   useEffect(() => {
@@ -46,28 +64,39 @@ export const PunchSection: React.FC<PunchSectionProps> = ({
     return () => clearInterval(timer);
   }, []);
 
+  const realToday = todayNumber || new Date().getDate();
   const employeeDays = employee?.days || [];
-  const todayPonto = employeeDays.find((d) => d.day === 10) || employeeDays[0];
+  const todayPonto = employeeDays.find((d) => d.day === realToday) || employeeDays[0];
   const workedMinutesToday = todayPonto?.workedMinutes || 0;
   const delayMinutesToday = todayPonto?.delayMinutes || 0;
 
   const punches = todayPonto?.punches || [];
   const entradaPunch = punches.find((p) => p.type === 'ENTRADA');
+  const pausaPunch = punches.find((p) => p.type === 'PAUSA_ALMOCO');
+  const retornoPunch = punches.find((p) => p.type === 'RETORNO_ALMOCO');
   const saidaPunch = punches.find((p) => p.type === 'SAIDA');
 
   const hasEntradaToday = !!entradaPunch;
+  const hasPausaToday = !!pausaPunch;
+  const hasRetornoToday = !!retornoPunch;
   const hasSaidaToday = !!saidaPunch;
 
   // Determine smart default punch type based on today's recorded punches
   useEffect(() => {
-    if (hasEntradaToday && !hasSaidaToday) {
-      setSelectedPunchType('SAIDA');
-    } else if (!hasEntradaToday) {
+    if (!hasEntradaToday) {
       setSelectedPunchType('ENTRADA');
+    } else if (hasEntradaToday && !hasPausaToday && !hasSaidaToday) {
+      setSelectedPunchType('PAUSA_ALMOCO');
+    } else if (hasPausaToday && !hasRetornoToday) {
+      setSelectedPunchType('RETORNO_ALMOCO');
+    } else if (hasRetornoToday && !hasSaidaToday) {
+      setSelectedPunchType('SAIDA');
+    } else if (hasEntradaToday && !hasSaidaToday) {
+      setSelectedPunchType('SAIDA');
     } else {
       setSelectedPunchType('SAIDA');
     }
-  }, [hasEntradaToday, hasSaidaToday]);
+  }, [hasEntradaToday, hasPausaToday, hasRetornoToday, hasSaidaToday]);
 
   const handleRegisterClick = () => {
     if (selectedPunchType === 'ENTRADA' && hasEntradaToday) {
@@ -77,7 +106,8 @@ export const PunchSection: React.FC<PunchSectionProps> = ({
       return; // Block duplicate saída
     }
 
-    if (geofence?.enforceGeofence && !location.inGeofence) {
+    // Check geofence enforcement after Trusted Wi-Fi validation
+    if (geofence?.enforceGeofence && !effectiveLocation.inGeofence) {
       setGeofenceBlockAlert(true);
       return;
     }
@@ -210,9 +240,12 @@ export const PunchSection: React.FC<PunchSectionProps> = ({
                   <span className="text-xs font-bold text-slate-800">
                     Sua Localização GPS
                   </span>
-                  {location.inGeofence ? (
+                  {effectiveLocation.inGeofence ? (
                     <span className="text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded-md flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Sede da Empresa (Cerca OK)
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      {effectiveLocation.isTrustedWifi
+                        ? `Validado via Wi-Fi Confiável (${effectiveLocation.trustedWifiName})`
+                        : 'Sede da Empresa (Cerca OK)'}
                     </span>
                   ) : (
                     <span className="text-[10px] bg-amber-100 text-amber-800 font-extrabold px-2 py-0.5 rounded-md flex items-center gap-1">
@@ -221,7 +254,7 @@ export const PunchSection: React.FC<PunchSectionProps> = ({
                   )}
                 </div>
                 <p className="text-xs text-slate-600 mt-0.5 font-medium leading-tight">
-                  {location.address}
+                  {effectiveLocation.address}
                 </p>
                 <button
                   type="button"

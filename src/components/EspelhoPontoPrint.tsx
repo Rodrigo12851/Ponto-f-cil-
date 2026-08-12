@@ -72,7 +72,11 @@ export const EspelhoPontoPrint: React.FC<EspelhoPontoPrintProps> = ({
             <p><strong>Colaborador:</strong> {employee.name}</p>
             <p><strong>CPF:</strong> {employee.cpf} | <strong>PIS/PASEP:</strong> {employee.pispasep}</p>
             <p><strong>Cargo:</strong> {employee.role} ({employee.department})</p>
-            <p><strong>Admissão:</strong> {employee.admissionDate} | <strong>Jornada:</strong> {employee.workSchedule}</p>
+            <p><strong>Admissão:</strong> {employee.admissionDate} | <strong>Jornada ({employee.scheduleType || 'FIXO'}):</strong> {employee.workSchedule}</p>
+            <p>
+              <strong>Regime de Horas:</strong> Carga Legal de {employee.weeklyTargetHours || 44}h/sem ({employee.dailyTargetHours || 8}h/dia)
+              {employee.includesSundays && ' • Domingos/Feriados Inclusos na Escala'}
+            </p>
           </div>
         </div>
 

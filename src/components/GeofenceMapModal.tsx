@@ -58,6 +58,18 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
   const [wifiEnabled, setWifiEnabled] = useState<boolean>(geofence.wifiEnabled ?? true);
   const [wifiSsid, setWifiSsid] = useState<string>(geofence.wifiSsid || 'WIFI_EMPRESA_SEDE');
   const [wifiPassword, setWifiPassword] = useState<string>(geofence.wifiPassword || '');
+  const [trustedWifiEnabled, setTrustedWifiEnabled] = useState<boolean>(
+    geofence.trustedWifiEnabled ?? geofence.wifiEnabled ?? true
+  );
+  const [trustedWifiSsid, setTrustedWifiSsid] = useState<string>(
+    geofence.trustedWifiSsid || geofence.wifiSsid || 'WIFI_EMPRESA_SEDE'
+  );
+  const [trustedWifiSsids, setTrustedWifiSsids] = useState<string[]>(
+    geofence.trustedWifiSsids && geofence.trustedWifiSsids.length > 0
+      ? geofence.trustedWifiSsids
+      : ['WIFI_EMPRESA_SEDE', 'REDE_ESCRITORIO_5G', 'SUPERMERCADO_CAIXAS_WIFI']
+  );
+  const [newSsidInput, setNewSsidInput] = useState<string>('');
 
   // Default company center
   const centerLat = geofence.latitude || -23.561684;
@@ -595,6 +607,9 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
       wifiEnabled,
       wifiSsid,
       wifiPassword,
+      trustedWifiEnabled,
+      trustedWifiSsid: wifiSsid || trustedWifiSsid,
+      trustedWifiSsids,
     };
 
     try {
@@ -833,14 +848,14 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
         {/* Wi-Fi Validation & Restriction Settings */}
         <div className="space-y-2 mb-2 shrink-0">
           {/* Wi-Fi Setup Card */}
-          <div className="bg-blue-900/10 border border-blue-500/30 p-2.5 rounded-2xl text-xs space-y-2">
+          <div className="bg-blue-900/10 border border-blue-500/30 p-3 rounded-2xl text-xs space-y-3">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <Wifi className="w-4 h-4 text-blue-600 shrink-0" />
+                <Wifi className="w-5 h-5 text-blue-600 shrink-0" />
                 <div>
-                  <p className="font-extrabold text-slate-900 text-xs">Validação por Wi-Fi da Empresa (Conjunto)</p>
-                  <p className="text-[10px] text-slate-500 font-medium">
-                    Colaboradores conectados ao Wi-Fi da empresa conseguem bater ponto mesmo com variação de GPS.
+                  <p className="font-black text-slate-900 text-xs">Validação por Wi-Fi Confiável (Trusted Wi-Fi)</p>
+                  <p className="text-[10px] text-slate-600 font-medium">
+                    Cadastre os nomes das redes Wi-Fi da empresa (SSID). Quando o dispositivo do funcionário estiver conectado a uma destas redes no momento da batida, a localização é validada como <strong>Confiável (Trusted)</strong>, contornando qualquer oscilação ou desvio de GPS (GPS drift).
                   </p>
                 </div>
               </div>
@@ -848,7 +863,10 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
                 <input
                   type="checkbox"
                   checked={wifiEnabled}
-                  onChange={(e) => setWifiEnabled(e.target.checked)}
+                  onChange={(e) => {
+                    setWifiEnabled(e.target.checked);
+                    setTrustedWifiEnabled(e.target.checked);
+                  }}
                   className="sr-only peer"
                 />
                 <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
@@ -856,30 +874,98 @@ export const GeofenceMapModal: React.FC<GeofenceMapModalProps> = ({
             </div>
 
             {wifiEnabled && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-blue-200/50">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-700 mb-0.5">
-                    Nome da Rede Wi-Fi (SSID):
-                  </label>
-                  <input
-                    type="text"
-                    value={wifiSsid}
-                    onChange={(e) => setWifiSsid(e.target.value)}
-                    placeholder="Ex: WIFI_EMPRESA_SEDE"
-                    className="w-full text-xs font-semibold px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
+              <div className="space-y-2.5 pt-2 border-t border-blue-200/60">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-extrabold text-slate-800 mb-0.5">
+                      Nome da Rede Wi-Fi Principal (SSID):
+                    </label>
+                    <input
+                      type="text"
+                      value={wifiSsid}
+                      onChange={(e) => {
+                        setWifiSsid(e.target.value);
+                        setTrustedWifiSsid(e.target.value);
+                      }}
+                      placeholder="Ex: WIFI_EMPRESA_SEDE"
+                      className="w-full text-xs font-bold px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-extrabold text-slate-800 mb-0.5">
+                      Senha ou Token de Validação da Rede (Opcional):
+                    </label>
+                    <input
+                      type="text"
+                      value={wifiPassword}
+                      onChange={(e) => setWifiPassword(e.target.value)}
+                      placeholder="Ex: empresa123"
+                      className="w-full text-xs font-semibold px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
                 </div>
+
+                {/* Additional Trusted SSIDs list */}
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-700 mb-0.5">
-                    Senha / Código de Confirmação do Wi-Fi (Opcional):
+                  <label className="block text-[10px] font-extrabold text-slate-800 mb-1">
+                    Outras Redes Wi-Fi Confiáveis Autorizadas (SSIDs Secundários):
                   </label>
-                  <input
-                    type="text"
-                    value={wifiPassword}
-                    onChange={(e) => setWifiPassword(e.target.value)}
-                    placeholder="Ex: 123456 ou empresa2026"
-                    className="w-full text-xs font-semibold px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
+
+                  <div className="flex gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={newSsidInput}
+                      onChange={(e) => setNewSsidInput(e.target.value)}
+                      placeholder="Ex: REDE_ESCRITORIO_5G ou SUPERMERCADO_CAIXAS_WIFI"
+                      className="flex-1 text-xs font-semibold px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl outline-none"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          if (newSsidInput.trim()) {
+                            setTrustedWifiSsids((prev) => [...prev, newSsidInput.trim()]);
+                            setNewSsidInput('');
+                          }
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (newSsidInput.trim()) {
+                          setTrustedWifiSsids((prev) => [...prev, newSsidInput.trim()]);
+                          setNewSsidInput('');
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl cursor-pointer"
+                    >
+                      + Adicionar
+                    </button>
+                  </div>
+
+                  {/* Registered SSIDs chips */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {Array.from(new Set([wifiSsid, ...trustedWifiSsids])).filter(Boolean).map((ssid) => (
+                      <span
+                        key={ssid}
+                        className="inline-flex items-center gap-1.5 bg-blue-100 text-blue-900 border border-blue-300 text-[11px] font-extrabold px-2.5 py-1 rounded-lg"
+                      >
+                        <Wifi className="w-3 h-3 text-blue-600" />
+                        <span>{ssid}</span>
+                        {ssid !== wifiSsid && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setTrustedWifiSsids((prev) => prev.filter((s) => s !== ssid))
+                            }
+                            className="text-blue-700 hover:text-rose-600 font-black cursor-pointer ml-1"
+                            title="Remover rede confiável"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}

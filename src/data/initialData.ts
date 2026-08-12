@@ -1,17 +1,22 @@
 import { Employee, CompanyGeofence, DayPonto } from '../types';
 import { DEFAULT_GEOFENCE } from '../utils/geolocation';
 
-const CURRENT_DAY = 10;
-const CURRENT_MONTH_YEAR = '2026-08';
+const todayObj = new Date();
+const CURRENT_DAY = todayObj.getDate();
+const currentYear = todayObj.getFullYear();
+const currentMonth = todayObj.getMonth(); // 0-based
+const monthPad = String(currentMonth + 1).padStart(2, '0');
+const CURRENT_MONTH_YEAR = `${currentYear}-${monthPad}`;
 
 function generateDaysForEmployee(employeeName: string): DayPonto[] {
   const days: DayPonto[] = [];
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
 
-  for (let d = 1; d <= 31; d++) {
+  for (let d = 1; d <= daysInMonth; d++) {
     const dayPad = String(d).padStart(2, '0');
     const dateStr = `${CURRENT_MONTH_YEAR}-${dayPad}`;
-    const displayDate = `${dayPad}/08/2026`;
-    const dateObj = new Date(2026, 7, d);
+    const displayDate = `${dayPad}/${monthPad}/${currentYear}`;
+    const dateObj = new Date(currentYear, currentMonth, d);
     const dayOfWeek = dateObj.getDay(); // 0 is Sun, 6 is Sat
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
@@ -57,7 +62,7 @@ function generateDaysForEmployee(employeeName: string): DayPonto[] {
           {
             id: `punch-${d}-1`,
             type: 'ENTRADA',
-            timestamp: `2026-08-10T08:02:15`,
+            timestamp: `${CURRENT_MONTH_YEAR}-${dayPad}T08:02:15`,
             timeFormatted: '08:02:15',
             photoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80',
             location: {
@@ -76,7 +81,7 @@ function generateDaysForEmployee(employeeName: string): DayPonto[] {
         delayMinutes: 2,
       });
     } else {
-      // Past worked days (Days 1 to 9)
+      // Past worked days
       const workedMins = 480 + (d % 3 === 0 ? 15 : d % 2 === 0 ? -10 : 5); // 8h +/- a few mins
       const balance = workedMins - 480;
       const delay = d % 4 === 0 ? 12 : 0;
@@ -90,7 +95,7 @@ function generateDaysForEmployee(employeeName: string): DayPonto[] {
           {
             id: `punch-${d}-1`,
             type: 'ENTRADA',
-            timestamp: `2026-08-${dayPad}T08:00:00`,
+            timestamp: `${CURRENT_MONTH_YEAR}-${dayPad}T08:00:00`,
             timeFormatted: '08:00:00',
             photoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80',
             location: {
@@ -105,7 +110,7 @@ function generateDaysForEmployee(employeeName: string): DayPonto[] {
           {
             id: `punch-${d}-2`,
             type: 'PAUSA_ALMOCO',
-            timestamp: `2026-08-${dayPad}T12:00:00`,
+            timestamp: `${CURRENT_MONTH_YEAR}-${dayPad}T12:00:00`,
             timeFormatted: '12:00:00',
             photoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80',
             location: {
@@ -171,7 +176,11 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     pispasep: '123.45678.90-1',
     admissionDate: '15/01/2023',
     workSchedule: '08:00 às 17:00 (Seg a Sex)',
+    scheduleType: 'FIXO',
+    includesSundays: false,
     dailyTargetHours: 8,
+    weeklyTargetHours: 44,
+    bankModeEnabled: true,
     isOnline: true,
     lastPunchType: 'ENTRADA',
     lastPunchTime: '08:02:15',
@@ -183,6 +192,31 @@ export const INITIAL_EMPLOYEES: Employee[] = [
   },
   {
     id: 'emp-2',
+    name: 'Marcos de Oliveira',
+    role: 'Operador de Caixa / Repositor',
+    department: 'Supermercado',
+    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=80',
+    email: 'marcos.oliveira@supermercado.com.br',
+    cpf: '567.890.123-44',
+    pispasep: '567.89012.34-5',
+    admissionDate: '01/03/2024',
+    workSchedule: 'Flexível Supermercado (Entrada 08:00h ou 13:00h - Domingos Inclusos)',
+    scheduleType: 'FLEXIVEL',
+    includesSundays: true,
+    dailyTargetHours: 8,
+    weeklyTargetHours: 44,
+    bankModeEnabled: true,
+    isOnline: true,
+    lastPunchType: 'ENTRADA',
+    lastPunchTime: '08:00:00',
+    days: generateDaysForEmployee('Marcos de Oliveira'),
+    bancoDeHorasMinutes: -90, // -01:30 (débito de horas por saída antecipada/escala)
+    lunchMode: 'MANUAL',
+    lunchDurationMinutes: 60,
+    lunchScheduledTime: '12:00 às 13:00',
+  },
+  {
+    id: 'emp-3',
     name: 'Maria Santos',
     role: 'Analista de RH Pleno',
     department: 'Recursos Humanos',
@@ -192,7 +226,11 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     pispasep: '234.56789.01-2',
     admissionDate: '10/06/2022',
     workSchedule: '08:00 às 17:00 (Seg a Sex)',
+    scheduleType: 'FIXO',
+    includesSundays: false,
     dailyTargetHours: 8,
+    weeklyTargetHours: 44,
+    bankModeEnabled: true,
     isOnline: true,
     lastPunchType: 'RETORNO_ALMOCO',
     lastPunchTime: '13:05:00',
@@ -203,7 +241,7 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     lunchScheduledTime: '12:00 às 13:00',
   },
   {
-    id: 'emp-3',
+    id: 'emp-4',
     name: 'Carlos Eduardo',
     role: 'Gerente Comercial',
     department: 'Vendas',
@@ -213,7 +251,11 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     pispasep: '345.67890.12-3',
     admissionDate: '01/02/2021',
     workSchedule: '08:00 às 17:00 (Seg a Sex)',
+    scheduleType: 'FIXO',
+    includesSundays: false,
     dailyTargetHours: 8,
+    weeklyTargetHours: 44,
+    bankModeEnabled: true,
     isOnline: false,
     lastPunchType: 'PAUSA_ALMOCO',
     lastPunchTime: '12:15:00',
@@ -224,7 +266,7 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     lunchScheduledTime: '12:00 às 13:00',
   },
   {
-    id: 'emp-4',
+    id: 'emp-5',
     name: 'Ana Costa',
     role: 'Designer UX/UI',
     department: 'Design',
@@ -234,7 +276,11 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     pispasep: '456.78901.23-4',
     admissionDate: '20/08/2023',
     workSchedule: '08:00 às 17:00 (Seg a Sex)',
+    scheduleType: 'FIXO',
+    includesSundays: false,
     dailyTargetHours: 8,
+    weeklyTargetHours: 44,
+    bankModeEnabled: true,
     isOnline: true,
     lastPunchType: 'ENTRADA',
     lastPunchTime: '08:10:00',

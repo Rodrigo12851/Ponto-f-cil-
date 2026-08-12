@@ -119,7 +119,9 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
       {/* Daily List Accordion */}
       <div className="space-y-2">
         {employee.days.map((d) => {
-          const isFuture = d.status === 'FUTURO';
+          const realToday = new Date().getDate();
+          const isToday = d.day === realToday;
+          const isFuture = d.day > realToday;
           const isWeekend = d.status === 'FOLGA';
           const isExpanded = expandedDay === d.day;
 
@@ -141,7 +143,7 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
                 <div className="flex items-center gap-3">
                   <div
                     className={`w-9 h-9 rounded-xl font-bold text-xs flex flex-col items-center justify-center border ${
-                      d.day === 10
+                      isToday
                         ? 'bg-blue-600 text-white border-blue-600'
                         : isWeekend
                         ? 'bg-rose-100 text-rose-700 border-rose-200'
@@ -155,7 +157,7 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-slate-800">{d.displayDate}</span>
-                      {d.day === 10 && (
+                      {isToday && (
                         <span className="text-[9px] bg-blue-600 text-white font-bold px-1.5 py-0.2 rounded-md">
                           Hoje
                         </span>

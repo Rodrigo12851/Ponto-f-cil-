@@ -29,8 +29,12 @@ export const CalendarStrip: React.FC<CalendarStripProps> = ({
     }
   }, [selectedDay]);
 
+  const now = new Date();
+  const currentMonthYear = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  const formattedMonthYear = currentMonthYear.charAt(0).toUpperCase() + currentMonthYear.slice(1);
+
   const getWeekDayName = (dayNumber: number) => {
-    const date = new Date(2026, 7, dayNumber);
+    const date = new Date(now.getFullYear(), now.getMonth(), dayNumber);
     const names = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
     return names[date.getDay()];
   };
@@ -40,8 +44,8 @@ export const CalendarStrip: React.FC<CalendarStripProps> = ({
   return (
     <div className="px-4 mb-4">
       <div className="flex items-center justify-between text-xs text-slate-500 font-medium mb-1.5 px-1">
-        <span className="flex items-center gap-1">
-          <CalendarIcon className="w-3.5 h-3.5 text-blue-600" /> Agosto / 2026
+        <span className="flex items-center gap-1 font-semibold text-slate-700">
+          <CalendarIcon className="w-3.5 h-3.5 text-blue-600" /> {formattedMonthYear}
         </span>
         <span className="text-[11px] text-slate-400">Clique para ver histórico do dia</span>
       </div>

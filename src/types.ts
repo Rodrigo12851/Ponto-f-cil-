@@ -9,6 +9,8 @@ export interface LocationData {
   wifiConnected?: boolean;
   connectedSsid?: string;
   wifiValidated?: boolean;
+  isTrustedWifi?: boolean;
+  trustedWifiName?: string;
 }
 
 export interface PunchRecord {
@@ -37,6 +39,7 @@ export interface DayPonto {
 }
 
 export type LunchMode = 'AUTOMATICO' | 'MANUAL';
+export type ScheduleType = 'FIXO' | 'FLEXIVEL' | 'ESCALA_6X1' | 'ESCALA_12X36';
 
 export interface Employee {
   id: string;
@@ -48,8 +51,12 @@ export interface Employee {
   cpf: string;
   pispasep: string;
   admissionDate: string;
-  workSchedule: string; // e.g., "08:00 - 17:00 (Seg a Sex)"
+  workSchedule: string; // e.g., "08:00 às 17:00 (Seg a Sex)" or "Escala Flexível Supermercado (08h às 17h / 13h às 22h)"
+  scheduleType?: ScheduleType;
+  includesSundays?: boolean;
+  weeklyTargetHours?: number; // e.g., 44
   dailyTargetHours: number; // e.g., 8
+  bankModeEnabled?: boolean; // Banco de Horas (saldo +/-)
   isOnline: boolean;
   lastPunchType?: PunchType;
   lastPunchTime?: string;
@@ -89,6 +96,31 @@ export interface CompanyGeofence {
   wifiEnabled?: boolean;
   wifiSsid?: string;
   wifiPassword?: string;
+  trustedWifiEnabled?: boolean;
+  trustedWifiSsid?: string;
+  trustedWifiSsids?: string[];
 }
 
-export type ActiveTab = 'inicio' | 'historico' | 'relatorios' | 'admin' | 'espelho';
+export interface ManagerUser {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  companyName: string;
+  password: string; // Senha de acesso do gestor
+  roleLabel: string; // Ex: "Gerente Geral", "Coordenador de RH"
+  status: 'ATIVO' | 'BLOQUEADO';
+  createdAt: string;
+}
+
+export interface OwnerSettings {
+  ownerName: string;
+  ownerEmail: string;
+  companyName: string;
+  masterPassword: string; // Senha Mestra do Proprietário
+  managers: ManagerUser[];
+}
+
+export type UserRole = 'PROPRIETARIO' | 'GESTOR' | 'COLABORADOR';
+
+export type ActiveTab = 'inicio' | 'historico' | 'relatorios' | 'admin' | 'espelho' | 'proprietario';

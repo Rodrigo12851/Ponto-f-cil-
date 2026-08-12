@@ -1,7 +1,8 @@
-import React from 'react';
-import { Shield, User, Clock, MapPin, Bell, Menu, Sparkles } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Shield, User, Clock, MapPin, Bell, Menu, Sparkles, Camera, Check, Loader2 } from 'lucide-react';
 import { Employee } from '../types';
 import { getBrazilianFullDate } from '../utils/timeFormatters';
+import { processProfilePhoto } from '../utils/imageHelper';
 
 interface HeaderProps {
   currentEmployee: Employee;
@@ -10,6 +11,7 @@ interface HeaderProps {
   isAdminView: boolean;
   onToggleAdminView: (isAdmin: boolean) => void;
   onOpenMenu: () => void;
+  onUpdateEmployee?: (employeeId: string, updatedData: Partial<Employee>) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -19,7 +21,31 @@ export const Header: React.FC<HeaderProps> = ({
   isAdminView,
   onToggleAdminView,
   onOpenMenu,
+  onUpdateEmployee,
 }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [showToast, setShowToast] = useState<boolean>(false);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsUploading(true);
+      const photoDataUrl = await processProfilePhoto(file, 400, 400, 0.88);
+      if (onUpdateEmployee) {
+        onUpdateEmployee(currentEmployee.id, { avatar: photoDataUrl });
+      }
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3500);
+    } catch (err: any) {
+      alert(err?.message || 'Erro ao carregar a foto do perfil.');
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
   return (
     <header
       className={`relative text-white transition-colors duration-300 ${
@@ -102,20 +128,65 @@ export const Header: React.FC<HeaderProps> = ({
         {!isAdminView ? (
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/10 min-w-0">
             <div className="flex items-center gap-2.5 min-w-0">
-              <img
-                src={currentEmployee.avatar}
-                alt={currentEmployee.name}
-                className="w-10 h-10 sm:w-11 sm:h-11 rounded-full object-cover border-2 border-white/80 shadow-md shrink-0"
-              />
+              {/* Profile Avatar with Camera Upload Badge */}
+              <div className="relative group shrink-0">
+                <img
+                  src={currentEmployee.avatar}
+                  alt={currentEmployee.name}
+                  className="w-11 h-11 sm:w-12 sm:h-12 rounded-full object-cover border-2 border-white/90 shadow-md transition group-hover:brightness-95 cursor-pointer"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Clique para alterar sua foto de perfil"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                  className="absolute -bottom-1 -right-1 bg-amber-400 hover:bg-amber-300 text-slate-950 p-1.5 rounded-full shadow-md border-2 border-blue-600 transition transform group-hover:scale-110 cursor-pointer flex items-center justify-center"
+                  title="Alterar foto de perfil (Galeria ou Câmera)"
+                >
+                  {isUploading ? (
+                    <Loader2 className="w-3 h-3 animate-spin text-slate-950" />
+                  ) : (
+                    <Camera className="w-3 h-3 text-slate-950 stroke-[2.5]" />
+                  )}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+              </div>
+
               <div className="min-w-0">
-                <h2 className="text-xs sm:text-sm md:text-base font-semibold leading-tight truncate">
-                  Olá, {currentEmployee.name}!
-                </h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xs sm:text-sm md:text-base font-extrabold leading-tight truncate">
+                    Olá, {currentEmployee.name}!
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="text-[10px] bg-white/15 hover:bg-white/25 text-white/90 px-2 py-0.5 rounded-lg border border-white/20 transition flex items-center gap-1 shrink-0 font-semibold cursor-pointer"
+                    title="Carregar foto da galeria"
+                  >
+                    <Camera className="w-2.5 h-2.5" />
+                    <span className="hidden sm:inline">Alterar Foto</span>
+                  </button>
+                </div>
                 <p className="text-[11px] sm:text-xs text-blue-100/90 font-medium truncate">
                   {currentEmployee.role} • <span className="opacity-80">{currentEmployee.department}</span>
                 </p>
               </div>
             </div>
+
+            {/* Toast Notification */}
+            {showToast && (
+              <div className="bg-emerald-500 text-white text-[11px] font-extrabold px-3 py-1.5 rounded-xl shadow-lg border border-emerald-300 flex items-center gap-1.5 animate-in fade-in shrink-0">
+                <Check className="w-3.5 h-3.5" /> Foto de perfil atualizada com sucesso!
+              </div>
+            )}
+
             <div className="text-right text-[10px] sm:text-xs text-blue-100/90 font-medium flex items-center gap-1 bg-black/10 px-2.5 py-1 rounded-xl border border-white/10 shrink-0">
               <Clock className="w-3 h-3 text-blue-200 shrink-0" />
               <span className="truncate">{getBrazilianFullDate()}</span>

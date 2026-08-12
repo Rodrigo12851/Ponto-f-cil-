@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Employee, CompanyGeofence, PunchType, LunchMode } from '../types';
+import { Employee, CompanyGeofence, PunchType, LunchMode, ScheduleType } from '../types';
 import { GeofenceMapModal } from './GeofenceMapModal';
 import {
   getPunchTypeLabel,
@@ -29,7 +29,13 @@ import {
   Coffee,
   Calendar,
   AlertTriangle,
+  User,
+  Briefcase,
+  Wifi,
+  Camera,
+  Loader2,
 } from 'lucide-react';
+import { processProfilePhoto } from '../utils/imageHelper';
 
 export type StatusCategory = 'TODOS' | 'TRABALHANDO' | 'ALMOCO' | 'FOLGA' | 'AUSENTE';
 
@@ -38,6 +44,7 @@ interface AdminDashboardProps {
   geofence: CompanyGeofence;
   onUpdateGeofence: (newGeofence: CompanyGeofence) => void;
   onAddEmployee: (newEmp: Partial<Employee>) => void;
+  onUpdateEmployee?: (employeeId: string, updatedData: Partial<Employee>) => void;
   onApprovePunch: (employeeId: string, punchId: string) => void;
   onSelectEmployeeForDetail: (emp: Employee) => void;
   onUpdateEmployeeLunch?: (
@@ -53,6 +60,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   geofence,
   onUpdateGeofence,
   onAddEmployee,
+  onUpdateEmployee,
   onApprovePunch,
   onSelectEmployeeForDetail,
   onUpdateEmployeeLunch,
@@ -69,16 +77,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [lunchDurationState, setLunchDurationState] = useState<number>(60);
   const [lunchScheduleState, setLunchScheduleState] = useState<string>('12:00 às 13:00');
 
+  // Selected employee for Edit modal
+  const [selectedEmpForEdit, setSelectedEmpForEdit] = useState<Employee | null>(null);
+  const [editName, setEditName] = useState<string>('');
+  const [editAvatar, setEditAvatar] = useState<string>('');
+  const [editCpf, setEditCpf] = useState<string>('');
+  const [editPispasep, setEditPispasep] = useState<string>('');
+  const [editRole, setEditRole] = useState<string>('');
+  const [editDept, setEditDept] = useState<string>('');
+  const [editEmail, setEditEmail] = useState<string>('');
+  const [editAdmission, setEditAdmission] = useState<string>('');
+  const [editScheduleType, setEditScheduleType] = useState<ScheduleType>('FIXO');
+  const [editWorkSchedule, setEditWorkSchedule] = useState<string>('');
+  const [editIncludesSundays, setEditIncludesSundays] = useState<boolean>(false);
+  const [editDailyHours, setEditDailyHours] = useState<number>(8);
+  const [editWeeklyHours, setEditWeeklyHours] = useState<number>(44);
+  const [editBankMode, setEditBankMode] = useState<boolean>(true);
+  const [isEditingPhotoLoading, setIsEditingPhotoLoading] = useState<boolean>(false);
+
   // Toast feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // New employee form state
   const [newEmpName, setNewEmpName] = useState<string>('');
+  const [newEmpCpf, setNewEmpCpf] = useState<string>('123.456.789-00');
+  const [newEmpPispasep, setNewEmpPispasep] = useState<string>('123.45678.90-1');
   const [newEmpRole, setNewEmpRole] = useState<string>('');
   const [newEmpDept, setNewEmpDept] = useState<string>('Tecnologia');
   const [newEmpEmail, setNewEmpEmail] = useState<string>('');
+  const [newEmpAdmission, setNewEmpAdmission] = useState<string>(new Date().toLocaleDateString('pt-BR'));
+  const [newEmpScheduleType, setNewEmpScheduleType] = useState<ScheduleType>('FIXO');
+  const [newEmpWorkSchedule, setNewEmpWorkSchedule] = useState<string>('08:00 às 17:00 (Seg a Sex)');
+  const [newEmpIncludesSundays, setNewEmpIncludesSundays] = useState<boolean>(false);
+  const [newEmpDailyHours, setNewEmpDailyHours] = useState<number>(8);
+  const [newEmpWeeklyHours, setNewEmpWeeklyHours] = useState<number>(44);
+  const [newEmpBankMode, setNewEmpBankMode] = useState<boolean>(true);
   const [newEmpLunchMode, setNewEmpLunchMode] = useState<LunchMode>('AUTOMATICO');
   const [newEmpLunchDuration, setNewEmpLunchDuration] = useState<number>(60);
+
+  const realTodayNum = new Date().getDate();
 
   // Categorize employee lists
   const workingEmployees = employees.filter(
@@ -86,11 +123,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   );
   const lunchEmployees = employees.filter((e) => e.lastPunchType === 'PAUSA_ALMOCO');
   const offEmployees = employees.filter((e) => {
-    const today = e.days.find((d) => d.day === 10);
+    const today = e.days.find((d) => d.day === realTodayNum);
     return today?.status === 'FOLGA' || e.lastPunchType === 'SAIDA';
   });
   const absentEmployees = employees.filter((e) => {
-    const today = e.days.find((d) => d.day === 10);
+    const today = e.days.find((d) => d.day === realTodayNum);
     return !e.lastPunchType && today?.status !== 'FOLGA';
   });
 
@@ -108,10 +145,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     } else if (statusCategoryFilter === 'ALMOCO') {
       matchesStatus = emp.lastPunchType === 'PAUSA_ALMOCO';
     } else if (statusCategoryFilter === 'FOLGA') {
-      const today = emp.days.find((d) => d.day === 10);
+      const today = emp.days.find((d) => d.day === realTodayNum);
       matchesStatus = today?.status === 'FOLGA' || emp.lastPunchType === 'SAIDA';
     } else if (statusCategoryFilter === 'AUSENTE') {
-      const today = emp.days.find((d) => d.day === 10);
+      const today = emp.days.find((d) => d.day === realTodayNum);
       matchesStatus = !emp.lastPunchType && today?.status !== 'FOLGA';
     }
 
@@ -126,12 +163,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     onAddEmployee({
       name: newEmpName,
+      cpf: newEmpCpf || '123.456.789-00',
+      pispasep: newEmpPispasep || '123.45678.90-1',
       role: newEmpRole || 'Colaborador',
       department: newEmpDept,
       email: newEmpEmail || `${newEmpName.toLowerCase().replace(/\s+/g, '.')}@empresa.com.br`,
+      admissionDate: newEmpAdmission || new Date().toLocaleDateString('pt-BR'),
+      scheduleType: newEmpScheduleType,
+      workSchedule: newEmpWorkSchedule,
+      includesSundays: newEmpIncludesSundays,
+      dailyTargetHours: Number(newEmpDailyHours) || 8,
+      weeklyTargetHours: Number(newEmpWeeklyHours) || 44,
+      bankModeEnabled: newEmpBankMode,
       avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80`,
-      workSchedule: '08:00 às 17:00 (Seg a Sex)',
-      dailyTargetHours: 8,
       lunchMode: newEmpLunchMode,
       lunchDurationMinutes: newEmpLunchDuration,
       lunchScheduledTime: newEmpLunchDuration === 60 ? '12:00 às 13:00' : newEmpLunchDuration === 90 ? '12:00 às 13:30' : '12:00 às 14:00',
@@ -140,7 +184,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setShowAddEmpModal(false);
     setNewEmpName('');
     setNewEmpRole('');
-    setToastMessage('Colaborador cadastrado com regras de almoço configuradas!');
+    setToastMessage(`Colaborador ${newEmpName} cadastrado com sucesso e jornada configurada!`);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  const openEditModal = (emp: Employee) => {
+    setSelectedEmpForEdit(emp);
+    setEditName(emp.name);
+    setEditAvatar(emp.avatar);
+    setEditCpf(emp.cpf || '123.456.789-00');
+    setEditPispasep(emp.pispasep || '123.45678.90-1');
+    setEditRole(emp.role);
+    setEditDept(emp.department);
+    setEditEmail(emp.email);
+    setEditAdmission(emp.admissionDate || '15/01/2023');
+    setEditScheduleType(emp.scheduleType || 'FIXO');
+    setEditWorkSchedule(emp.workSchedule || '08:00 às 17:00 (Seg a Sex)');
+    setEditIncludesSundays(emp.includesSundays || false);
+    setEditDailyHours(emp.dailyTargetHours || 8);
+    setEditWeeklyHours(emp.weeklyTargetHours || 44);
+    setEditBankMode(emp.bankModeEnabled ?? true);
+  };
+
+  const handleEditEmployeeSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedEmpForEdit) return;
+
+    if (onUpdateEmployee) {
+      onUpdateEmployee(selectedEmpForEdit.id, {
+        name: editName,
+        avatar: editAvatar || selectedEmpForEdit.avatar,
+        cpf: editCpf,
+        pispasep: editPispasep,
+        role: editRole,
+        department: editDept,
+        email: editEmail,
+        admissionDate: editAdmission,
+        scheduleType: editScheduleType,
+        workSchedule: editWorkSchedule,
+        includesSundays: editIncludesSundays,
+        dailyTargetHours: Number(editDailyHours) || 8,
+        weeklyTargetHours: Number(editWeeklyHours) || 44,
+        bankModeEnabled: editBankMode,
+      });
+    }
+
+    setSelectedEmpForEdit(null);
+    setToastMessage(`Cadastro e jornada do colaborador ${editName} atualizados!`);
     setTimeout(() => setToastMessage(null), 4000);
   };
 
@@ -401,6 +491,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             );
           })}
         </div>
+
+        {/* Trusted Wi-Fi Quick Info Bar */}
+        <div className="mt-3 bg-blue-50/80 border border-blue-200/80 p-2.5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-blue-600 text-white rounded-xl shrink-0">
+              <Wifi className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-black text-slate-900 text-xs">Wi-Fi Confiável (Trusted Wi-Fi):</span>
+                <span className="bg-blue-600 text-white font-extrabold text-[10px] px-2 py-0.5 rounded-md">
+                  {geofence.wifiSsid || geofence.trustedWifiSsid || 'WIFI_EMPRESA_SEDE'}
+                </span>
+                {geofence.trustedWifiSsids && geofence.trustedWifiSsids.length > 0 && (
+                  <span className="text-[10px] text-blue-700 font-bold bg-blue-100 px-2 py-0.5 rounded-md border border-blue-200">
+                    +{geofence.trustedWifiSsids.length} rede(s)
+                  </span>
+                )}
+              </div>
+              <p className="text-[10px] text-slate-600 font-medium leading-tight mt-0.5">
+                Dispositivos conectados às redes cadastradas possuem localização validada automaticamente, <strong>isenta de erros por GPS drift</strong>.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setShowGeofenceModal(true)}
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition shrink-0 cursor-pointer"
+          >
+            Gerenciar SSIDs Confiáveis
+          </button>
+        </div>
       </div>
 
       {/* Employee Search and Department Filters */}
@@ -455,137 +577,601 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           filteredEmployees.map((emp) => (
             <div
               key={emp.id}
-              className="bg-white rounded-2xl p-4 border border-slate-100 shadow-xs hover:shadow-md transition-shadow flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+              className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs hover:shadow-md transition flex flex-col lg:flex-row lg:items-center justify-between gap-4"
             >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <img
-                    src={emp.avatar}
-                    alt={emp.name}
-                    className="w-11 h-11 rounded-2xl object-cover border border-slate-200 shadow-xs"
-                  />
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-sm font-bold text-slate-900">{emp.name}</h4>
-                      <span
-                        className={`w-2 h-2 rounded-full ${
-                          emp.isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'
-                        }`}
-                      ></span>
-                    </div>
-                    <p className="text-xs text-slate-500 font-medium">
-                      {emp.role} • <span className="text-blue-600">{emp.department}</span>
-                    </p>
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <span className="text-[10px] text-slate-500">
-                        Banco: <strong>{formatMinutesToHours(emp.bancoDeHorasMinutes)}</strong>
+              <div className="flex flex-col sm:flex-row sm:items-start gap-3 min-w-0">
+                <img
+                  src={emp.avatar}
+                  alt={emp.name}
+                  className="w-12 h-12 rounded-2xl object-cover border border-slate-200 shadow-xs shrink-0"
+                />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="text-sm font-bold text-slate-900">{emp.name}</h4>
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        emp.isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'
+                      }`}
+                      title={emp.isOnline ? 'Ativo no sistema' : 'Inativo no momento'}
+                    ></span>
+
+                    {/* Schedule Badge */}
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        emp.scheduleType === 'FLEXIVEL'
+                          ? 'bg-purple-50 text-purple-800 border-purple-200'
+                          : emp.scheduleType === 'ESCALA_6X1' || emp.scheduleType === 'ESCALA_12X36'
+                          ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                          : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      }`}
+                    >
+                      {emp.scheduleType === 'FLEXIVEL'
+                        ? '🔀 Flexível / Supermercado'
+                        : emp.scheduleType === 'ESCALA_6X1'
+                        ? '📅 Escala 6x1'
+                        : emp.scheduleType === 'ESCALA_12X36'
+                        ? '⏱️ Escala 12x36'
+                        : '🟢 Jornada Fixa'}
+                    </span>
+
+                    {emp.includesSundays && (
+                      <span className="text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full">
+                        ☀️ Inclui Domingos
                       </span>
-                      <span className="text-[10px] bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded-md font-semibold flex items-center gap-1">
-                        <Utensils className="w-2.5 h-2.5 text-amber-600" />
-                        {(emp.lunchMode || 'AUTOMATICO') === 'AUTOMATICO'
-                          ? `Almoço Pré-assinalado (${emp.lunchDurationMinutes || 60}m)`
-                          : 'Almoço Manual'}
-                      </span>
-                    </div>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-slate-600 font-medium mt-0.5">
+                    <strong>{emp.role}</strong> • <span className="text-blue-600 font-bold">{emp.department}</span>
+                  </p>
+
+                  <div className="flex items-center gap-x-3 gap-y-1 mt-1.5 flex-wrap text-[11px] text-slate-500 font-medium">
+                    <span>📄 <strong>CPF:</strong> {emp.cpf}</span>
+                    <span>📑 <strong>PIS:</strong> {emp.pispasep}</span>
+                    <span>📅 <strong>Admissão:</strong> {emp.admissionDate}</span>
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    {/* Work Schedule text */}
+                    <span className="text-[11px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-lg border border-slate-200 font-semibold">
+                      ⏰ {emp.workSchedule}
+                    </span>
+
+                    {/* Banco de Horas tag */}
+                    <span
+                      className={`text-[11px] px-2 py-0.5 rounded-lg border font-bold flex items-center gap-1 ${
+                        emp.bancoDeHorasMinutes >= 0
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          : 'bg-rose-50 text-rose-800 border-rose-200'
+                      }`}
+                    >
+                      <Clock className="w-3 h-3" />
+                      Banco: {formatMinutesToHours(emp.bancoDeHorasMinutes)}{' '}
+                      {emp.bancoDeHorasMinutes >= 0 ? '(Crédito)' : '(Débito / Horas Devidas)'}
+                    </span>
+
+                    {/* Lunch Mode Tag */}
+                    <span className="text-[10px] bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-md font-semibold flex items-center gap-1">
+                      <Utensils className="w-2.5 h-2.5 text-amber-600" />
+                      {(emp.lunchMode || 'AUTOMATICO') === 'AUTOMATICO'
+                        ? `Almoço Pré-assinalado (${emp.lunchDurationMinutes || 60}m)`
+                        : 'Almoço Manual'}
+                    </span>
                   </div>
                 </div>
+              </div>
 
-                <div className="flex items-center justify-between sm:justify-end gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
-                  <button
-                    onClick={() => openLunchConfigModal(emp)}
-                    className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold rounded-xl transition flex items-center gap-1 cursor-pointer"
-                    title="Configurar Regras de Almoço"
-                  >
-                    <Utensils className="w-3.5 h-3.5 text-amber-700" /> Regra Almoço
-                  </button>
+              <div className="flex items-center justify-between sm:justify-end gap-2 pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-100 shrink-0">
+                <button
+                  onClick={() => openEditModal(emp)}
+                  className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold rounded-xl transition flex items-center gap-1 cursor-pointer"
+                  title="Editar dados e jornada do colaborador"
+                >
+                  <Edit2 className="w-3.5 h-3.5 text-slate-700" /> Editar
+                </button>
 
-                  <button
-                    onClick={() => onSelectEmployeeForDetail(emp)}
-                    className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-xs"
-                  >
-                    Espelho ➔
-                  </button>
-                </div>
+                <button
+                  onClick={() => openLunchConfigModal(emp)}
+                  className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold rounded-xl transition flex items-center gap-1 cursor-pointer"
+                  title="Configurar Regras de Almoço"
+                >
+                  <Utensils className="w-3.5 h-3.5 text-amber-700" /> Almoço
+                </button>
+
+                <button
+                  onClick={() => onSelectEmployeeForDetail(emp)}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-xs"
+                >
+                  Espelho ➔
+                </button>
               </div>
             </div>
           ))
         )}
       </div>
 
-      {/* Add Employee Modal */}
+      {/* Cadastrar Colaborador Modal */}
       {showAddEmpModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-md w-full p-5 shadow-2xl relative border border-slate-100">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-in fade-in overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-5 sm:p-7 shadow-2xl relative border border-slate-100 my-auto max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setShowAddEmpModal(false)}
-              className="absolute top-4 right-4 p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition"
+              className="absolute top-4 right-4 p-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
 
-            <h3 className="text-base font-bold text-slate-900 mb-1">Cadastrar Colaborador</h3>
-            <p className="text-xs text-slate-500 mb-4">
-              Adicione um novo membro para registro de ponto com biometria.
-            </p>
-
-            <form onSubmit={handleCreateEmployeeSubmit} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Nome Completo:</label>
-                <input
-                  type="text"
-                  value={newEmpName}
-                  onChange={(e) => setNewEmpName(e.target.value)}
-                  placeholder="Ex: Roberto Alves"
-                  required
-                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 font-semibold"
-                />
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-3 bg-blue-50 text-blue-700 rounded-2xl border border-blue-200">
+                <UserPlus className="w-6 h-6" />
               </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900">Cadastrar Colaborador</h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  Cadastre dados pessoais, CPF, PIS/PASEP e tipo de jornada flexível/fixa.
+                </p>
+              </div>
+            </div>
 
-              <div className="grid grid-cols-2 gap-2">
+            <form onSubmit={handleCreateEmployeeSubmit} className="space-y-4 text-xs">
+              {/* Section 1: Dados Pessoais & Documentos */}
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-3">
+                <h4 className="font-extrabold text-slate-800 text-xs flex items-center gap-1.5">
+                  <User className="w-4 h-4 text-blue-600" /> 1. DADOS PESSOAIS & DOCUMENTOS
+                </h4>
+
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Cargo:</label>
+                  <label className="block font-bold text-slate-700 mb-1">Nome Completo do Colaborador:</label>
                   <input
                     type="text"
-                    value={newEmpRole}
-                    onChange={(e) => setNewEmpRole(e.target.value)}
-                    placeholder="Ex: Analista de Dados"
+                    value={newEmpName}
+                    onChange={(e) => setNewEmpName(e.target.value)}
+                    placeholder="Ex: João da Silva"
                     required
-                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 font-semibold"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-900"
                   />
                 </div>
 
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">CPF (11 dígitos):</label>
+                    <input
+                      type="text"
+                      value={newEmpCpf}
+                      onChange={(e) => setNewEmpCpf(e.target.value)}
+                      placeholder="123.456.789-00"
+                      required
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">PIS / PASEP / NIT:</label>
+                    <input
+                      type="text"
+                      value={newEmpPispasep}
+                      onChange={(e) => setNewEmpPispasep(e.target.value)}
+                      placeholder="123.45678.90-1"
+                      required
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-900"
+                    />
+                  </div>
+                </div>
+
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Departamento:</label>
-                  <select
-                    value={newEmpDept}
-                    onChange={(e) => setNewEmpDept(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 font-semibold"
-                  >
-                    <option value="Tecnologia">Tecnologia</option>
-                    <option value="Recursos Humanos">Recursos Humanos</option>
-                    <option value="Vendas">Vendas</option>
-                    <option value="Design">Design</option>
-                    <option value="Financeiro">Financeiro</option>
-                  </select>
+                  <label className="block font-bold text-slate-700 mb-1">E-mail Corporativo:</label>
+                  <input
+                    type="email"
+                    value={newEmpEmail}
+                    onChange={(e) => setNewEmpEmail(e.target.value)}
+                    placeholder="joao.silva@empresa.com.br"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-900"
+                  />
                 </div>
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">E-mail Corporativo:</label>
-                <input
-                  type="email"
-                  value={newEmpEmail}
-                  onChange={(e) => setNewEmpEmail(e.target.value)}
-                  placeholder="roberto.alves@empresa.com.br"
-                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 font-semibold"
-                />
+              {/* Section 2: Profissional */}
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-3">
+                <h4 className="font-extrabold text-slate-800 text-xs flex items-center gap-1.5">
+                  <Briefcase className="w-4 h-4 text-blue-600" /> 2. DADOS PROFISSIONAIS
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Cargo:</label>
+                    <input
+                      type="text"
+                      value={newEmpRole}
+                      onChange={(e) => setNewEmpRole(e.target.value)}
+                      placeholder="Ex: Desenvolvedor Front-End"
+                      required
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Departamento / Setor:</label>
+                    <select
+                      value={newEmpDept}
+                      onChange={(e) => setNewEmpDept(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-900"
+                    >
+                      <option value="Tecnologia">Tecnologia</option>
+                      <option value="Supermercado">Supermercado</option>
+                      <option value="Recursos Humanos">Recursos Humanos</option>
+                      <option value="Vendas">Vendas</option>
+                      <option value="Design">Design</option>
+                      <option value="Financeiro">Financeiro</option>
+                      <option value="Operações">Operações</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Data de Admissão:</label>
+                    <input
+                      type="text"
+                      value={newEmpAdmission}
+                      onChange={(e) => setNewEmpAdmission(e.target.value)}
+                      placeholder="DD/MM/AAAA"
+                      required
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-900"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 3: Jornada de Trabalho & Flexibilidade */}
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-3">
+                <h4 className="font-extrabold text-slate-800 text-xs flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-blue-600" /> 3. JORNADA DE TRABALHO & BANCO DE HORAS
+                </h4>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1.5">Tipo de Jornada de Trabalho:</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                      { id: 'FIXO', label: '🟢 Fixa', desc: '08h às 17h (Seg-Sex)' },
+                      { id: 'FLEXIVEL', label: '🔀 Flexível', desc: 'Supermercado (Turnos 08h ou 13h)' },
+                      { id: 'ESCALA_6X1', label: '📅 6x1', desc: 'Inclui Domingos' },
+                      { id: 'ESCALA_12X36', label: '⏱️ 12x36', desc: 'Plantão 12h' },
+                    ].map((st) => (
+                      <button
+                        key={st.id}
+                        type="button"
+                        onClick={() => {
+                          const type = st.id as ScheduleType;
+                          setNewEmpScheduleType(type);
+                          if (type === 'FIXO') {
+                            setNewEmpWorkSchedule('08:00 às 17:00 (Seg a Sex)');
+                            setNewEmpIncludesSundays(false);
+                          } else if (type === 'FLEXIVEL') {
+                            setNewEmpWorkSchedule('Flexível Supermercado (Entrada 08:00h ou 13:00h - Domingos Inclusos)');
+                            setNewEmpIncludesSundays(true);
+                          } else if (type === 'ESCALA_6X1') {
+                            setNewEmpWorkSchedule('Escala 6x1 (08:00 às 16:20 - Seg a Dom com folga semanal)');
+                            setNewEmpIncludesSundays(true);
+                          } else if (type === 'ESCALA_12X36') {
+                            setNewEmpWorkSchedule('Escala 12x36 (07:00 às 19:00)');
+                            setNewEmpIncludesSundays(true);
+                          }
+                        }}
+                        className={`p-2.5 rounded-xl border text-left font-bold transition cursor-pointer ${
+                          newEmpScheduleType === st.id
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div className="text-xs">{st.label}</div>
+                        <div className="text-[9px] font-normal opacity-90 mt-0.5 leading-tight">{st.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Descrição / Detalhamento da Jornada:</label>
+                  <input
+                    type="text"
+                    value={newEmpWorkSchedule}
+                    onChange={(e) => setNewEmpWorkSchedule(e.target.value)}
+                    placeholder="Ex: 08:00 às 17:00 (Seg a Sex) ou Flexível 08h / 13h"
+                    required
+                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-900"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="newIncludesSundays"
+                    checked={newEmpIncludesSundays}
+                    onChange={(e) => setNewEmpIncludesSundays(e.target.checked)}
+                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  />
+                  <label htmlFor="newIncludesSundays" className="font-bold text-slate-800 text-xs cursor-pointer">
+                    Escala de trabalho inclui Domingos e Feriados
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Carga Diária Alvo (horas):</label>
+                    <input
+                      type="number"
+                      value={newEmpDailyHours}
+                      onChange={(e) => setNewEmpDailyHours(Number(e.target.value))}
+                      min={1}
+                      max={12}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Carga Semanal Alvo (horas):</label>
+                    <input
+                      type="number"
+                      value={newEmpWeeklyHours}
+                      onChange={(e) => setNewEmpWeeklyHours(Number(e.target.value))}
+                      min={1}
+                      max={60}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-900"
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-blue-50/80 border border-blue-200 p-3 rounded-xl text-[11px] text-blue-900 leading-relaxed">
+                  <strong>💡 Regras do Banco de Horas na Jornada Flexível:</strong>
+                  <ul className="list-disc pl-4 mt-1 space-y-0.5">
+                    <li>O funcionário deve cumprir a carga exigida pela CLT/contrato.</li>
+                    <li>Se não cumprir a carga diária/semanal, o saldo fica <strong>negativo (devendo horas)</strong>.</li>
+                    <li>Se trabalhar a mais por solicitação do proprietário/gestão, acumula <strong>saldo positivo no Banco de Horas</strong>.</li>
+                  </ul>
+                </div>
               </div>
 
               <button
                 type="submit"
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl shadow-md transition cursor-pointer mt-2"
+                className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-2 text-xs"
               >
-                CADASTRAR E ATIVAR
+                <Check className="w-4 h-4" /> CADASTRAR COLABORADOR & ATIVAR
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Editar Colaborador Modal */}
+      {selectedEmpForEdit && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-in fade-in overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-5 sm:p-7 shadow-2xl relative border border-slate-100 my-auto max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={() => setSelectedEmpForEdit(null)}
+              className="absolute top-4 right-4 p-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-3 bg-slate-100 text-slate-800 rounded-2xl border border-slate-200">
+                <Edit2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900">Editar Cadastro & Jornada</h3>
+                <p className="text-xs text-slate-500 font-medium">{selectedEmpForEdit.name}</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleEditEmployeeSubmit} className="space-y-4 text-xs">
+              {/* Personal & Docs */}
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-3">
+                <h4 className="font-extrabold text-slate-800 text-xs">DADOS PESSOAIS & FOTO DE PERFIL</h4>
+                
+                {/* Profile Photo Selector in Modal */}
+                <div className="flex items-center gap-4 p-3 bg-white rounded-2xl border border-slate-200">
+                  <div className="relative shrink-0">
+                    <img
+                      src={editAvatar || selectedEmpForEdit.avatar}
+                      alt={editName}
+                      className="w-14 h-14 rounded-full object-cover border-2 border-blue-500 shadow-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-extrabold text-slate-800 text-xs mb-1">
+                      Foto do Colaborador:
+                    </label>
+                    <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-extrabold text-xs rounded-xl border border-blue-200 transition cursor-pointer">
+                      {isEditingPhotoLoading ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Camera className="w-3.5 h-3.5" />
+                      )}
+                      <span>Escolher Foto (Galeria ou Câmera)</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          try {
+                            setIsEditingPhotoLoading(true);
+                            const photoUrl = await processProfilePhoto(file);
+                            setEditAvatar(photoUrl);
+                          } catch (err: any) {
+                            alert(err?.message || 'Erro ao carregar imagem.');
+                          } finally {
+                            setIsEditingPhotoLoading(false);
+                          }
+                        }}
+                      />
+                    </label>
+                    <p className="text-[10px] text-slate-500 font-medium mt-1">
+                      Selecione uma imagem da galeria do dispositivo.
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Nome Completo:</label>
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    required
+                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-900"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">CPF:</label>
+                    <input
+                      type="text"
+                      value={editCpf}
+                      onChange={(e) => setEditCpf(e.target.value)}
+                      required
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">PIS / PASEP:</label>
+                    <input
+                      type="text"
+                      value={editPispasep}
+                      onChange={(e) => setEditPispasep(e.target.value)}
+                      required
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-900"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">E-mail Corporativo:</label>
+                  <input
+                    type="email"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-900"
+                  />
+                </div>
+              </div>
+
+              {/* Professional */}
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-3">
+                <h4 className="font-extrabold text-slate-800 text-xs">CARGO & DEPARTAMENTO</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Cargo:</label>
+                    <input
+                      type="text"
+                      value={editRole}
+                      onChange={(e) => setEditRole(e.target.value)}
+                      required
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Departamento:</label>
+                    <input
+                      type="text"
+                      value={editDept}
+                      onChange={(e) => setEditDept(e.target.value)}
+                      required
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Admissão:</label>
+                    <input
+                      type="text"
+                      value={editAdmission}
+                      onChange={(e) => setEditAdmission(e.target.value)}
+                      required
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-900"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Schedule */}
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-3">
+                <h4 className="font-extrabold text-slate-800 text-xs">JORNADA & BANCO DE HORAS</h4>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1.5">Tipo de Jornada:</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                      { id: 'FIXO', label: '🟢 Fixa' },
+                      { id: 'FLEXIVEL', label: '🔀 Flexível Supermercado' },
+                      { id: 'ESCALA_6X1', label: '📅 Escala 6x1' },
+                      { id: 'ESCALA_12X36', label: '⏱️ Escala 12x36' },
+                    ].map((st) => (
+                      <button
+                        key={st.id}
+                        type="button"
+                        onClick={() => setEditScheduleType(st.id as ScheduleType)}
+                        className={`p-2 rounded-xl border font-bold text-xs cursor-pointer ${
+                          editScheduleType === st.id
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-slate-700 border-slate-200'
+                        }`}
+                      >
+                        {st.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Horário de Trabalho / Escala:</label>
+                  <input
+                    type="text"
+                    value={editWorkSchedule}
+                    onChange={(e) => setEditWorkSchedule(e.target.value)}
+                    required
+                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-900"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="editIncludesSundays"
+                    checked={editIncludesSundays}
+                    onChange={(e) => setEditIncludesSundays(e.target.checked)}
+                    className="w-4 h-4 rounded text-blue-600 cursor-pointer"
+                  />
+                  <label htmlFor="editIncludesSundays" className="font-bold text-slate-800 text-xs cursor-pointer">
+                    Jornada inclui Domingos e Feriados na escala
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Carga Diária (h):</label>
+                    <input
+                      type="number"
+                      value={editDailyHours}
+                      onChange={(e) => setEditDailyHours(Number(e.target.value))}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Carga Semanal (h):</label>
+                    <input
+                      type="number"
+                      value={editWeeklyHours}
+                      onChange={(e) => setEditWeeklyHours(Number(e.target.value))}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-900"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-2 text-xs"
+              >
+                <Check className="w-4 h-4" /> SALVAR ALTERAÇÕES DO COLABORADOR
               </button>
             </form>
           </div>

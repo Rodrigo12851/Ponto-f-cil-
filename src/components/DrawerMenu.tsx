@@ -136,25 +136,50 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
             <div className="flex items-center gap-3">
               <div className="relative group shrink-0">
                 <img
-                  src={currentEmployee.avatar}
-                  alt={currentEmployee.name}
-                  className="w-12 h-12 rounded-full object-cover border-2 border-slate-300 shadow-xs cursor-pointer transition group-hover:brightness-90"
-                  onClick={() => drawerFileInputRef.current?.click()}
-                  title="Alterar Foto de Perfil"
+                  src={
+                    currentUserRole === 'PROPRIETARIO'
+                      ? 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=200&auto=format&fit=crop&q=80'
+                      : currentUserRole === 'GESTOR'
+                      ? (employees.find((e) => e.id === 'emp-3')?.avatar || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop&q=80')
+                      : currentEmployee.avatar
+                  }
+                  alt={
+                    currentUserRole === 'PROPRIETARIO'
+                      ? 'Proprietária'
+                      : currentUserRole === 'GESTOR'
+                      ? (employees.find((e) => e.id === 'emp-3')?.name || 'Maria Santos')
+                      : currentEmployee.name
+                  }
+                  className="w-12 h-12 rounded-full object-cover border-2 border-slate-300 shadow-xs transition"
+                  onClick={() => {
+                    if (currentUserRole === 'COLABORADOR') drawerFileInputRef.current?.click();
+                  }}
                 />
-                <button
-                  type="button"
-                  onClick={() => drawerFileInputRef.current?.click()}
-                  disabled={isUploading}
-                  className="absolute -bottom-1 -right-1 bg-blue-600 hover:bg-blue-700 text-white p-1 rounded-full shadow-md border-2 border-white transition transform group-hover:scale-110 cursor-pointer flex items-center justify-center"
-                  title="Alterar foto de perfil"
-                >
-                  {isUploading ? (
-                    <Loader2 className="w-3 h-3 animate-spin text-white" />
-                  ) : (
-                    <Camera className="w-3 h-3 text-white" />
-                  )}
-                </button>
+                {currentUserRole === 'COLABORADOR' && (
+                  <button
+                    type="button"
+                    onClick={() => drawerFileInputRef.current?.click()}
+                    disabled={isUploading}
+                    className="absolute -bottom-1 -right-1 bg-blue-600 hover:bg-blue-700 text-white p-1 rounded-full shadow-md border-2 border-white transition transform group-hover:scale-110 cursor-pointer flex items-center justify-center"
+                    title="Alterar foto de perfil"
+                  >
+                    {isUploading ? (
+                      <Loader2 className="w-3 h-3 animate-spin text-white" />
+                    ) : (
+                      <Camera className="w-3 h-3 text-white" />
+                    )}
+                  </button>
+                )}
+                {currentUserRole === 'GESTOR' && (
+                  <div className="absolute -bottom-1 -right-1 bg-emerald-600 text-white p-1 rounded-full shadow-md border-2 border-white flex items-center justify-center" title="Perfil de Gestor">
+                    <Shield className="w-3 h-3" />
+                  </div>
+                )}
+                {currentUserRole === 'PROPRIETARIO' && (
+                  <div className="absolute -bottom-1 -right-1 bg-amber-500 text-slate-950 p-1 rounded-full shadow-md border-2 border-white flex items-center justify-center" title="Proprietário Master">
+                    <Crown className="w-3 h-3" />
+                  </div>
+                )}
                 <input
                   ref={drawerFileInputRef}
                   type="file"
@@ -165,20 +190,44 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
               </div>
 
               <div className="overflow-hidden flex-1 min-w-0">
-                <p className="text-xs font-black text-slate-900 truncate">{currentEmployee.name}</p>
-                <p className="text-[11px] text-slate-500 font-medium truncate">{currentEmployee.role}</p>
+                <p className="text-xs font-black text-slate-900 truncate">
+                  {currentUserRole === 'PROPRIETARIO'
+                    ? 'Ana Oliveira'
+                    : currentUserRole === 'GESTOR'
+                    ? (employees.find((e) => e.id === 'emp-3')?.name || 'Maria Santos')
+                    : currentEmployee.name}
+                </p>
+                <p className="text-[11px] text-slate-500 font-medium truncate">
+                  {currentUserRole === 'PROPRIETARIO'
+                    ? 'Proprietária & Administradora Geral'
+                    : currentUserRole === 'GESTOR'
+                    ? (employees.find((e) => e.id === 'emp-3')?.role || 'Coordenadora de RH (Gestora)')
+                    : currentEmployee.role}
+                </p>
 
-                <button
-                  type="button"
-                  onClick={() => drawerFileInputRef.current?.click()}
-                  className="mt-1 text-[10px] text-blue-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
-                >
-                  <Camera className="w-3 h-3" /> Alterar foto do perfil
-                </button>
+                {currentUserRole === 'COLABORADOR' && (
+                  <button
+                    type="button"
+                    onClick={() => drawerFileInputRef.current?.click()}
+                    className="mt-1 text-[10px] text-blue-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Camera className="w-3 h-3" /> Alterar foto do perfil
+                  </button>
+                )}
+                {currentUserRole === 'GESTOR' && (
+                  <span className="mt-1 text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded-full inline-block">
+                    🛡️ Perfil do Gestor
+                  </span>
+                )}
+                {currentUserRole === 'PROPRIETARIO' && (
+                  <span className="mt-1 text-[10px] bg-amber-100 text-amber-900 font-extrabold px-2 py-0.5 rounded-full inline-block">
+                    👑 Perfil do Proprietário
+                  </span>
+                )}
               </div>
             </div>
 
-            {showToast && (
+            {showToast && currentUserRole === 'COLABORADOR' && (
               <div className="mt-2 bg-emerald-100 text-emerald-900 border border-emerald-300 text-[10px] font-bold px-2.5 py-1 rounded-xl flex items-center gap-1">
                 <Check className="w-3 h-3 text-emerald-600 shrink-0" /> Foto atualizada com sucesso!
               </div>
@@ -349,31 +398,6 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
             </div>
           )}
 
-          {/* Quick Employee Switcher */}
-          <div className="mt-6 pt-4 border-t border-slate-100">
-            <p className="text-[10px] font-extrabold uppercase text-slate-400 px-3 mb-2 tracking-wider">
-              Trocar Perfil de Teste
-            </p>
-            <div className="space-y-1">
-              {employees.map((emp) => (
-                <button
-                  key={emp.id}
-                  onClick={() => {
-                    onSelectEmployee(emp);
-                    onClose();
-                  }}
-                  className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-between transition ${
-                    currentEmployee.id === emp.id
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  <span className="truncate">{emp.name}</span>
-                  <span className="text-[10px] text-slate-400">{emp.department}</span>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* Footer */}

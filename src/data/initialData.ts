@@ -218,8 +218,8 @@ export const INITIAL_EMPLOYEES: Employee[] = [
   {
     id: 'emp-3',
     name: 'Maria Santos',
-    role: 'Analista de RH Pleno',
-    department: 'Recursos Humanos',
+    role: 'Coordenadora de RH (Gestora)',
+    department: 'Gestão / Recursos Humanos',
     avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop&q=80',
     email: 'maria.santos@empresa.com.br',
     cpf: '234.567.890-11',

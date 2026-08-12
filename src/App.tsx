@@ -106,9 +106,11 @@ export default function App() {
     if (role === 'COLABORADOR') {
       setIsAdminView(false);
       setActiveTab('inicio');
+      if (!employeeId) setCurrentEmpId('emp-1');
     } else if (role === 'GESTOR') {
       setIsAdminView(true);
       setActiveTab('inicio');
+      if (!employeeId) setCurrentEmpId('emp-3');
     } else if (role === 'PROPRIETARIO') {
       setIsAdminView(true);
       setActiveTab('proprietario');

@@ -35,6 +35,7 @@ interface DrawerMenuProps {
   currentUserRole: UserRole;
   onSwitchRole: (role: UserRole) => void;
   masterPassword?: string;
+  onLogout?: () => void;
 }
 
 export const DrawerMenu: React.FC<DrawerMenuProps> = ({
@@ -51,6 +52,7 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
   currentUserRole,
   onSwitchRole,
   masterPassword = '123',
+  onLogout,
 }) => {
   const drawerFileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -360,7 +362,19 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="pt-4 border-t border-slate-100 text-center">
+        <div className="pt-4 border-t border-slate-100 text-center space-y-2">
+          {onLogout && (
+            <button
+              onClick={() => {
+                onLogout();
+                onClose();
+              }}
+              className="w-full py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 transition flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Sair / Trocar de Conta</span>
+            </button>
+          )}
           <p className="text-[10px] text-slate-400 font-medium">
             Ponto Facial v2.5 • CLT & Portaria 671 MTP
           </p>

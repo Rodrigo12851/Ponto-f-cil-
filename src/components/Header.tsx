@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Shield, User, Clock, MapPin, Bell, Menu, Sparkles, Camera, Check, Loader2 } from 'lucide-react';
+import { Shield, User, Clock, MapPin, Bell, Menu, Sparkles, Camera, Check, Loader2, LogOut } from 'lucide-react';
 import { Employee } from '../types';
 import { getBrazilianFullDate } from '../utils/timeFormatters';
 import { processProfilePhoto } from '../utils/imageHelper';
@@ -12,6 +12,7 @@ interface HeaderProps {
   onToggleAdminView: (isAdmin: boolean) => void;
   onOpenMenu: () => void;
   onUpdateEmployee?: (employeeId: string, updatedData: Partial<Employee>) => void;
+  onLogout?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -22,6 +23,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleAdminView,
   onOpenMenu,
   onUpdateEmployee,
+  onLogout,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -121,6 +123,17 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="hidden sm:inline">{isAdminView ? 'Modo Funcionário' : 'Modo Gestor'}</span>
               <span className="inline sm:hidden">{isAdminView ? 'Funcionário' : 'Gestor'}</span>
             </button>
+
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                className="px-2 sm:px-2.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold bg-rose-600/80 hover:bg-rose-600 text-white border border-rose-400/30 transition shadow-sm cursor-pointer shrink-0 flex items-center gap-1"
+                title="Sair / Trocar Conta"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Sair</span>
+              </button>
+            )}
           </div>
         </div>
 

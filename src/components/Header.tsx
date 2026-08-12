@@ -89,47 +89,8 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* User selector & Mode switcher - Available only for Manager/Owner */}
+          {/* Logout Action */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {currentUserRole !== 'COLABORADOR' && (
-              <>
-                {!isAdminView ? (
-                  <div className="relative">
-                    <select
-                      value={currentEmployee.id}
-                      onChange={(e) => {
-                        const emp = employees.find((x) => x.id === e.target.value);
-                        if (emp) onSelectEmployee(emp);
-                      }}
-                      className="bg-white/15 text-white text-[11px] sm:text-xs font-semibold py-1.5 pl-2 pr-6 max-w-[95px] xs:max-w-[120px] sm:max-w-[200px] rounded-xl border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40 cursor-pointer backdrop-blur-md appearance-none truncate"
-                    >
-                      {employees.map((emp) => (
-                        <option key={emp.id} value={emp.id} className="text-slate-900 font-medium">
-                          👤 {emp.name} ({emp.department})
-                        </option>
-                      ))}
-                    </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1.5 text-white/80">
-                      <User className="w-3 h-3" />
-                    </div>
-                  </div>
-                ) : null}
-
-                <button
-                  onClick={() => onToggleAdminView(!isAdminView)}
-                  className={`px-2 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-semibold flex items-center gap-1 sm:gap-1.5 transition-all shadow-sm cursor-pointer shrink-0 ${
-                    isAdminView
-                      ? 'bg-blue-600 hover:bg-blue-500 text-white border border-blue-400/30'
-                      : 'bg-slate-900/40 hover:bg-slate-900/60 text-white border border-white/20'
-                  }`}
-                >
-                  <Shield className="w-3.5 h-3.5 shrink-0" />
-                  <span className="hidden sm:inline">{isAdminView ? 'Modo Funcionário' : 'Modo Gestor'}</span>
-                  <span className="inline sm:hidden">{isAdminView ? 'Funcionário' : 'Gestor'}</span>
-                </button>
-              </>
-            )}
-
             {onLogout && (
               <button
                 onClick={onLogout}

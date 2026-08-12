@@ -252,7 +252,6 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
                 <button
                   onClick={() => {
                     onSelectTab('admin');
-                    onToggleAdminView(true);
                     onClose();
                   }}
                   className={`w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-3 transition ${

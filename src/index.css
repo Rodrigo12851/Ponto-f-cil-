@@ -17,7 +17,7 @@ html, body {
 @media print {
   @page {
     size: A4 portrait;
-    margin: 4mm 6mm;
+    margin: 5mm 8mm;
   }
 
   html, body {
@@ -33,22 +33,46 @@ html, body {
     print-color-adjust: exact !important;
   }
 
-  /* Hide all elements on the screen by default */
-  body * {
-    visibility: hidden !important;
+  /* Hide header, main, nav, drawer, and non-printable elements during print */
+  header,
+  main,
+  nav,
+  aside,
+  .print\:hidden,
+  .no-print {
+    display: none !important;
   }
 
-  /* Make only the report paper container and its children visible */
-  .espelho-print-paper,
-  .espelho-print-paper * {
-    visibility: visible !important;
+  /* Reset outer container wrappers so they don't clip or add height */
+  #root,
+  #root > div,
+  #root > div > div {
+    overflow: visible !important;
+    min-height: 0 !important;
+    height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    background: #ffffff !important;
+    box-shadow: none !important;
   }
 
-  /* Position report paper at top left of A4 sheet */
+  /* Reset print modal backdrop from fixed dark overlay to a normal printable block */
+  .espelho-print-backdrop {
+    position: static !important;
+    background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
   .espelho-print-paper {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
+    position: static !important;
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
@@ -60,26 +84,7 @@ html, body {
     color: #000000 !important;
   }
 
-  /* Ensure modal backdrop doesn't add scroll/height */
-  .espelho-print-backdrop {
-    position: static !important;
-    background: transparent !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    width: 100% !important;
-    height: auto !important;
-    min-height: 0 !important;
-    overflow: visible !important;
-    display: block !important;
-  }
-
-  .print\:hidden,
-  .no-print {
-    display: none !important;
-    visibility: hidden !important;
-  }
-
-  tr, .print-no-break {
+  tr {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
   }

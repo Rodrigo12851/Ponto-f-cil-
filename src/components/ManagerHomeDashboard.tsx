@@ -268,7 +268,7 @@ export const ManagerHomeDashboard: React.FC<ManagerHomeDashboardProps> = ({
 
                     <div className="min-w-0">
                       <h3 className="font-extrabold text-sm text-slate-900 truncate group-hover:text-blue-600 transition">
-                        {emp.name}
+                        <span>{emp.name}</span>
                       </h3>
                       <p className="text-[11px] text-slate-500 font-medium truncate">
                         {emp.role}

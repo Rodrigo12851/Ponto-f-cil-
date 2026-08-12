@@ -116,7 +116,9 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
                 PF
               </div>
               <div>
-                <h3 className="font-extrabold text-sm text-slate-900 leading-tight">Ponto Facial</h3>
+                <h3 className="font-extrabold text-sm text-slate-900 leading-tight">
+                  <span>Ponto Facial</span>
+                </h3>
                 <p className="text-[11px] text-slate-500 font-medium">Gestão de Equipe & GPS</p>
               </div>
             </div>
@@ -294,7 +296,9 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
                     <Crown className="w-5 h-5 text-amber-600" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-black text-slate-900">Acesso do Proprietário</h3>
+                    <h3 className="text-sm font-black text-slate-900">
+                      <span>Acesso do Proprietário</span>
+                    </h3>
                     <p className="text-[11px] text-slate-500 font-medium">Digite a senha mestra da empresa.</p>
                   </div>
                 </div>

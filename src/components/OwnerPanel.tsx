@@ -331,7 +331,9 @@ export const OwnerPanel: React.FC<OwnerPanelProps> = ({
                     </div>
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="font-black text-slate-900 text-sm">{mgr.name}</h3>
+                        <h3 className="font-black text-slate-900 text-sm">
+                          <span>{mgr.name}</span>
+                        </h3>
                         {mgr.status === 'ATIVO' ? (
                           <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold text-[10px] px-2 py-0.5 rounded-md flex items-center gap-1">
                             <ShieldCheck className="w-3 h-3 text-emerald-600" /> Acesso Ativo
@@ -456,7 +458,7 @@ export const OwnerPanel: React.FC<OwnerPanelProps> = ({
               </div>
               <div>
                 <h3 className="text-base font-black text-slate-900">
-                  {editingManager ? 'Editar Cadastro do Gestor' : 'Cadastrar Novo Gestor'}
+                  <span>{editingManager ? 'Editar Cadastro do Gestor' : 'Cadastrar Novo Gestor'}</span>
                 </h3>
                 <p className="text-xs text-slate-500 font-medium">
                   Defina o e-mail e a senha de acesso para que o gestor possa gerenciar os funcionários.
@@ -595,7 +597,9 @@ export const OwnerPanel: React.FC<OwnerPanelProps> = ({
                 <Crown className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-base font-black text-slate-900">Configurações do Proprietário</h3>
+                <h3 className="text-base font-black text-slate-900">
+                  <span>Configurações do Proprietário</span>
+                </h3>
                 <p className="text-xs text-slate-500 font-medium">Altere sua senha mestra de acesso total.</p>
               </div>
             </div>

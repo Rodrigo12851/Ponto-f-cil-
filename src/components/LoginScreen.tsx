@@ -239,7 +239,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <h3 className="font-extrabold text-xs text-white truncate">
-                            {acc.name}
+                            <span>{acc.name}</span>
                           </h3>
                           <span
                             className={`text-[9px] font-bold px-2 py-0.5 rounded-md border uppercase ${acc.badgeColor}`}

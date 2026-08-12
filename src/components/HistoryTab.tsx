@@ -426,7 +426,9 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
               <X className="w-5 h-5" />
             </button>
 
-            <h3 className="text-sm font-bold text-white mb-2 pr-8">{previewPhoto.title}</h3>
+            <h3 className="text-sm font-bold text-white mb-2 pr-8">
+              <span>{previewPhoto.title}</span>
+            </h3>
 
             <div className="relative rounded-2xl overflow-hidden border-2 border-slate-700 my-3 shadow-lg bg-black">
               <img src={previewPhoto.url} alt="Foto de Ponto" className="w-full h-64 object-cover" />
@@ -462,7 +464,9 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
               <X className="w-4 h-4" />
             </button>
 
-            <h3 className="text-base font-bold text-slate-900 mb-1">Solicitar Ajuste de Ponto</h3>
+            <h3 className="text-base font-bold text-slate-900 mb-1">
+              <span>Solicitar Ajuste de Ponto</span>
+            </h3>
             <p className="text-xs text-slate-500 mb-4">
               Informe a data, tipo de marcação e motivo do esquecimento.
             </p>

@@ -707,7 +707,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <UserPlus className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-lg font-black text-slate-900">Cadastrar Colaborador</h3>
+                <h3 className="text-lg font-black text-slate-900">
+                  <span>Cadastrar Colaborador</span>
+                </h3>
                 <p className="text-xs text-slate-500 font-medium">
                   Cadastre dados pessoais, CPF, PIS/PASEP e tipo de jornada flexível/fixa.
                 </p>
@@ -957,7 +959,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <Edit2 className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-lg font-black text-slate-900">Editar Cadastro & Jornada</h3>
+                <h3 className="text-lg font-black text-slate-900">
+                  <span>Editar Cadastro & Jornada</span>
+                </h3>
                 <p className="text-xs text-slate-500 font-medium">{selectedEmpForEdit.name}</p>
               </div>
             </div>
@@ -1204,7 +1208,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <Utensils className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-slate-900">Configurar Intervalo de Almoço</h3>
+                <h3 className="text-base font-bold text-slate-900">
+                  <span>Configurar Intervalo de Almoço</span>
+                </h3>
                 <p className="text-xs text-slate-500 font-semibold">{selectedEmpForLunch.name}</p>
               </div>
             </div>

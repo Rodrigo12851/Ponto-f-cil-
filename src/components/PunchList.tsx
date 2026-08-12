@@ -40,7 +40,7 @@ export const PunchList: React.FC<PunchListProps> = ({ dayPonto, isToday }) => {
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
           <Clock className="w-4 h-4 text-blue-600" />
-          Marcações de {dayPonto.displayDate || 'Hoje'} {isToday ? '(Hoje)' : ''}
+          <span>Marcações de {dayPonto.displayDate || 'Hoje'} {isToday ? '(Hoje)' : ''}</span>
         </h3>
         <span className="text-xs font-semibold text-slate-500">
           Total: {formatHoursAndMinutes(dayPonto.workedMinutes || 0)}

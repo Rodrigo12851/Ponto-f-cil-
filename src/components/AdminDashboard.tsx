@@ -428,7 +428,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-xl">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-            <Map className="w-4 h-4 text-emerald-600" /> Mapa de Presença e Quadrado do Terreno
+            <Map className="w-4 h-4 text-emerald-600" />
+            <span>Mapa de Presença e Quadrado do Terreno</span>
           </h3>
           <button
             onClick={() => setShowGeofenceModal(true)}

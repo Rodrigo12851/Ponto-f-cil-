@@ -133,13 +133,13 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
       });
     }
 
-    const encodedUri = encodeURI(csvContent);
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
+    link.href = url;
     link.setAttribute('download', `Relatorio_${isAdmin ? 'Equipe' : employee.name.replace(/\s+/g, '_')}_Agosto2026.csv`);
-    document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   return (
@@ -209,7 +209,8 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-blue-600" /> Total de Horas Trabalhadas por Colaborador
+                  <BarChart3 className="w-4 h-4 text-blue-600" />
+                  <span>Total de Horas Trabalhadas por Colaborador</span>
                 </h3>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
                   Comparação acumulada do mês vigente (Horas)
@@ -248,7 +249,8 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
             <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-xl">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-emerald-600" /> Saldo do Banco de Horas (Horas)
+                  <Clock className="w-4 h-4 text-emerald-600" />
+                  <span>Saldo do Banco de Horas (Horas)</span>
                 </h3>
               </div>
 
@@ -278,7 +280,8 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
             <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-xl">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-amber-500" /> Atrasos Acumulados por Colaborador (Minutos)
+                  <AlertTriangle className="w-4 h-4 text-amber-500" />
+                  <span>Atrasos Acumulados por Colaborador (Minutos)</span>
                 </h3>
               </div>
 
@@ -308,7 +311,8 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
           {/* Team Ranking & Performance Table */}
           <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-xl">
             <h3 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <Users className="w-4 h-4 text-blue-600" /> Tabela do Histórico da Equipe
+              <Users className="w-4 h-4 text-blue-600" />
+              <span>Tabela do Histórico da Equipe</span>
             </h3>
 
             <div className="overflow-x-auto">
@@ -374,7 +378,8 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
           <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-xl">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-blue-600" /> Horas Trabalhadas por Dia (Horas)
+                <BarChart3 className="w-4 h-4 text-blue-600" />
+                <span>Horas Trabalhadas por Dia (Horas)</span>
               </h3>
               <span className="text-xs text-slate-400 font-medium">Meta Diária: 8.0h</span>
             </div>
@@ -402,7 +407,8 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-xl">
               <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-3">
-                <PieIcon className="w-4 h-4 text-emerald-600" /> Índice de Pontualidade
+                <PieIcon className="w-4 h-4 text-emerald-600" />
+                <span>Índice de Pontualidade</span>
               </h3>
 
               <div className="h-52 w-full flex items-center justify-center">

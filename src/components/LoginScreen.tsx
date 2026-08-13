@@ -14,16 +14,19 @@ import {
   ChevronRight,
   Briefcase,
   Users,
+  Tablet,
 } from 'lucide-react';
 
 interface LoginScreenProps {
   employees: Employee[];
   onLoginSuccess: (role: UserRole, employeeId?: string) => void;
+  onOpenTabletKiosk?: () => void;
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({
   employees,
   onLoginSuccess,
+  onOpenTabletKiosk,
 }) => {
   const [username, setUsername] = useState<string>('');
   const [password, setPassword] = useState<string>('');
@@ -77,9 +80,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       return;
     }
 
-    if (cleanPass !== '123') {
-      setErrorMsg('Senha incorreta. A senha para todos os usuários é: 123');
+    if (cleanPass !== '123' && cleanPass !== '1234') {
+      setErrorMsg('Senha incorreta. A senha padrão para testes é: 123 ou 1234');
       return;
+    }
+
+    // Check tablet kiosk login
+    if (cleanUser === 'tablet' || cleanUser === 'totem' || cleanUser === 'ponto-fixo' || cleanUser === 'kiosk') {
+      if (onOpenTabletKiosk) {
+        onOpenTabletKiosk();
+        return;
+      }
     }
 
     // Check account matching
@@ -213,6 +224,32 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               ENTRAR NO SISTEMA <ChevronRight className="w-4 h-4" />
             </button>
           </form>
+
+          {/* Tablet Kiosk Shortcut Button */}
+          {onOpenTabletKiosk && (
+            <div className="pt-3">
+              <button
+                type="button"
+                onClick={onOpenTabletKiosk}
+                className="w-full py-3.5 px-4 bg-gradient-to-r from-indigo-700 via-indigo-600 to-purple-800 hover:from-indigo-600 hover:to-purple-700 text-white font-black text-xs rounded-2xl shadow-xl shadow-indigo-900/40 border border-indigo-400/50 flex items-center justify-between cursor-pointer group transition active:scale-98"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-amber-400 text-slate-950 rounded-xl group-hover:scale-110 transition">
+                    <Tablet className="w-5 h-5" />
+                  </div>
+                  <div className="text-left">
+                    <div className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+                      <span>📱 MODO TABLET (PONTO FIXO DENTRO DA EMPRESA)</span>
+                    </div>
+                    <div className="text-[10px] font-medium text-indigo-200">
+                      Reconhecimento de 3 fotos + Confirmação rápida
+                    </div>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-amber-300 group-hover:translate-x-1 transition" />
+              </button>
+            </div>
+          )}
 
           {/* Quick Selection Shortcuts for 3 Modes */}
           <div className="pt-4 border-t border-slate-800 space-y-3">

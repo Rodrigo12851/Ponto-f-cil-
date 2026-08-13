@@ -18,6 +18,7 @@ import {
   Crown,
   Key,
   Lock,
+  Tablet,
 } from 'lucide-react';
 import { processProfilePhoto } from '../utils/imageHelper';
 
@@ -36,6 +37,7 @@ interface DrawerMenuProps {
   onSwitchRole: (role: UserRole) => void;
   masterPassword?: string;
   onLogout?: () => void;
+  onOpenTabletKiosk?: () => void;
 }
 
 export const DrawerMenu: React.FC<DrawerMenuProps> = ({
@@ -53,6 +55,7 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
   onSwitchRole,
   masterPassword = '123',
   onLogout,
+  onOpenTabletKiosk,
 }) => {
   const drawerFileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -239,6 +242,25 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
             <p className="text-[10px] font-extrabold uppercase text-slate-400 px-3 mb-1 tracking-wider">
               Menu de Navegação
             </p>
+
+            {/* Dedicated Tablet Kiosk Button for Managers/Owners */}
+            {(currentUserRole === 'GESTOR' || currentUserRole === 'PROPRIETARIO') && onOpenTabletKiosk && (
+              <button
+                onClick={() => {
+                  onOpenTabletKiosk();
+                  onClose();
+                }}
+                className="w-full text-left px-3.5 py-3 my-1 rounded-xl font-black text-xs flex items-center justify-between transition bg-indigo-600 hover:bg-indigo-700 text-white shadow-md cursor-pointer border border-indigo-400"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Tablet className="w-4 h-4 text-amber-300 shrink-0" />
+                  <span>📱 Modo Tablet (Ponto Fixo)</span>
+                </div>
+                <span className="text-[9px] bg-amber-400 text-slate-950 font-black px-1.5 py-0.5 rounded uppercase">
+                  Ativar
+                </span>
+              </button>
+            )}
 
             {currentUserRole === 'PROPRIETARIO' ? (
               <button

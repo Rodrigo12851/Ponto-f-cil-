@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, MapPin, Camera, AlertTriangle, CheckCircle2, Navigation, Sparkles, Info, ShieldAlert, Crosshair, Map as MapIcon, Wifi, ShieldCheck, Check } from 'lucide-react';
+import { Clock, MapPin, Camera, AlertTriangle, CheckCircle2, Navigation, Sparkles, Info, ShieldAlert, Crosshair, Map as MapIcon, Wifi, ShieldCheck, Check, Lock, Tablet } from 'lucide-react';
 import { Employee, LocationData, PunchType, CompanyGeofence } from '../types';
 import { formatMinutesToHours, formatHoursAndMinutes, getPunchTypeLabel } from '../utils/timeFormatters';
 import { LiveLocationMapModal } from './LiveLocationMapModal';
@@ -93,6 +93,13 @@ export const PunchSection: React.FC<PunchSectionProps> = ({
   }, [hasEntradaToday, hasPausaToday, hasRetornoToday, hasSaidaToday]);
 
   const handleRegisterClick = () => {
+    if (employee?.allowPersonalPunch === false) {
+      alert(
+        'REGISTRO DE PONTO BLOQUEADO NO CELULAR/LOGIN INDIVIDUAL!\n\nSeu gestor configurou sua conta para registro exclusivo no Tablet / Ponto Fixo da Empresa.'
+      );
+      return;
+    }
+
     if (selectedPunchType === 'ENTRADA' && hasEntradaToday) {
       return; // Block duplicate entrada
     }
@@ -194,8 +201,24 @@ export const PunchSection: React.FC<PunchSectionProps> = ({
           </div>
         </div>
 
-        {/* Big Punch Action Button */}
-        {hasEntradaToday && hasSaidaToday ? (
+        {/* Personal Punch Disabled Warning Card */}
+        {employee?.allowPersonalPunch === false ? (
+          <div className="bg-rose-50 border-2 border-rose-200 text-rose-950 rounded-2xl p-4 mb-5 text-center space-y-2">
+            <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto shadow-xs">
+              <Lock className="w-5 h-5" />
+            </div>
+            <h4 className="text-xs font-black uppercase tracking-wider text-rose-900">
+              Ponto Individual Desativado no Seu Login
+            </h4>
+            <p className="text-xs font-medium text-rose-800 leading-relaxed max-w-md mx-auto">
+              Seu gestor configurou sua conta para registro de ponto <strong>exclusivamente no Tablet / Ponto Fixo da Empresa</strong>.
+            </p>
+            <div className="inline-flex items-center gap-1.5 text-[11px] font-extrabold text-rose-700 bg-rose-100 px-3 py-1 rounded-full border border-rose-200">
+              <Tablet className="w-3.5 h-3.5" />
+              <span>Bata seu ponto no Tablet localizado na recepção</span>
+            </div>
+          </div>
+        ) : hasEntradaToday && hasSaidaToday ? (
           <div className="w-full py-4 px-6 bg-slate-200 text-slate-600 font-extrabold text-xs sm:text-sm rounded-2xl border border-slate-300 text-center flex items-center justify-center gap-2 mb-5">
             <CheckCircle2 className="w-5 h-5 text-emerald-600" />
             <span>PONTOS DE HOJE JÁ FORAM REGISTRADOS (CONCLUÍDO)</span>

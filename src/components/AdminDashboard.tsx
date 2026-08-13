@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Employee, CompanyGeofence, PunchType, LunchMode, ScheduleType } from '../types';
 import { GeofenceMapModal } from './GeofenceMapModal';
+import { FacialRegistrationModal } from './FacialRegistrationModal';
 import {
   getPunchTypeLabel,
   getPunchTypeBadgeColor,
@@ -34,6 +35,9 @@ import {
   Wifi,
   Camera,
   Loader2,
+  Tablet,
+  Lock,
+  ShieldCheck,
 } from 'lucide-react';
 import { processProfilePhoto } from '../utils/imageHelper';
 
@@ -53,6 +57,7 @@ interface AdminDashboardProps {
     lunchDurationMinutes: number,
     lunchScheduledTime: string
   ) => void;
+  onOpenTabletKiosk?: () => void;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
@@ -64,12 +69,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onApprovePunch,
   onSelectEmployeeForDetail,
   onUpdateEmployeeLunch,
+  onOpenTabletKiosk,
 }) => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [departmentFilter, setDepartmentFilter] = useState<string>('TODOS');
   const [statusCategoryFilter, setStatusCategoryFilter] = useState<StatusCategory>('TODOS');
   const [showAddEmpModal, setShowAddEmpModal] = useState<boolean>(false);
   const [showGeofenceModal, setShowGeofenceModal] = useState<boolean>(false);
+
+  // Selected employee for 3 Facial Photos Modal
+  const [selectedEmpForFacial, setSelectedEmpForFacial] = useState<Employee | null>(null);
 
   // Selected employee for lunch config modal
   const [selectedEmpForLunch, setSelectedEmpForLunch] = useState<Employee | null>(null);
@@ -288,12 +297,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <h2 className="text-lg font-bold mt-1">Gestão de Presença & Cerca no Mapa</h2>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {onOpenTabletKiosk && (
+              <button
+                onClick={onOpenTabletKiosk}
+                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs rounded-xl flex items-center gap-1.5 transition shadow-lg cursor-pointer border border-indigo-400/50"
+              >
+                <Tablet className="w-4 h-4 text-amber-300" /> Modo Tablet (Empresa)
+              </button>
+            )}
             <button
               onClick={() => setShowGeofenceModal(true)}
               className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition shadow-md cursor-pointer border border-emerald-500"
             >
-              <Map className="w-4 h-4" /> Delimitar Área no Mapa
+              <Map className="w-4 h-4" /> Delimitar Área
             </button>
             <button
               onClick={() => setShowAddEmpModal(true)}
@@ -658,11 +675,55 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         ? `Almoço Pré-assinalado (${emp.lunchDurationMinutes || 60}m)`
                         : 'Almoço Manual'}
                     </span>
+
+                    {/* Personal App Punch Status Tag */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newVal = emp.allowPersonalPunch === false ? true : false;
+                        if (onUpdateEmployee) {
+                          onUpdateEmployee(emp.id, { allowPersonalPunch: newVal });
+                          setToastMessage(
+                            newVal
+                              ? `Ponto no celular liberado para ${emp.name}!`
+                              : `Ponto no celular bloqueado para ${emp.name} (Somente no Tablet)!`
+                          );
+                          setTimeout(() => setToastMessage(null), 3500);
+                        }
+                      }}
+                      className={`text-[10px] px-2 py-0.5 rounded-md font-extrabold flex items-center gap-1 border transition cursor-pointer ${
+                        emp.allowPersonalPunch !== false
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                          : 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100'
+                      }`}
+                      title="Clique para ativar/desativar se este colaborador pode bater ponto pelo próprio celular/login"
+                    >
+                      {emp.allowPersonalPunch !== false ? (
+                        <>
+                          <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                          <span>Ponto no App: Liberado</span>
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="w-2.5 h-2.5 text-rose-600" />
+                          <span>Ponto no App: Bloqueado (Só Tablet)</span>
+                        </>
+                      )}
+                    </button>
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between sm:justify-end gap-2 pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-100 shrink-0">
+              <div className="flex items-center justify-between sm:justify-end gap-2 pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-100 shrink-0 flex-wrap">
+                <button
+                  onClick={() => setSelectedEmpForFacial(emp)}
+                  className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-xs font-bold rounded-xl transition flex items-center gap-1 cursor-pointer"
+                  title="Cadastrar 3 fotos faciais para o tablet"
+                >
+                  <Camera className="w-3.5 h-3.5 text-blue-600" />
+                  <span>3 Fotos Tablet ({emp.facialPhotos?.length || 0}/3)</span>
+                </button>
+
                 <button
                   onClick={() => openEditModal(emp)}
                   className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold rounded-xl transition flex items-center gap-1 cursor-pointer"
@@ -1302,6 +1363,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* Facial Registration Modal (3 Photos for Tablet) */}
+      {selectedEmpForFacial && (
+        <FacialRegistrationModal
+          employee={selectedEmpForFacial}
+          onSavePhotos={(employeeId, photos) => {
+            if (onUpdateEmployee) {
+              onUpdateEmployee(employeeId, { facialPhotos: photos });
+              setToastMessage(`3 fotos faciais cadastradas com sucesso para o tablet!`);
+              setTimeout(() => setToastMessage(null), 3500);
+            }
+          }}
+          onClose={() => setSelectedEmpForFacial(null)}
+        />
       )}
     </div>
   );

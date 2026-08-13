@@ -65,6 +65,8 @@ export interface Employee {
   lunchMode?: LunchMode; // 'AUTOMATICO' (Pré-assinalado / dispensa marcação) vs 'MANUAL'
   lunchDurationMinutes?: number; // 60 (1h), 90 (1.5h), 120 (2h)
   lunchScheduledTime?: string; // e.g. "12:00 às 13:00"
+  allowPersonalPunch?: boolean; // Permite bater ponto no celular pessoal (se false, apenas no tablet)
+  facialPhotos?: string[]; // 3 fotos faciais de referência para o tablet
 }
 
 export interface Point2D {
@@ -118,6 +120,7 @@ export interface OwnerSettings {
   ownerEmail: string;
   companyName: string;
   masterPassword: string; // Senha Mestra do Proprietário
+  managerPassword?: string; // Senha padrão do Gestor
   managers: ManagerUser[];
 }
 

@@ -31,6 +31,7 @@ import { EspelhoPontoPrint } from './components/EspelhoPontoPrint';
 import { Navbar } from './components/Navbar';
 import { DrawerMenu } from './components/DrawerMenu';
 import { LoginScreen } from './components/LoginScreen';
+import { TabletKioskModal } from './components/TabletKioskModal';
 
 export default function App() {
   // Authentication State
@@ -158,6 +159,7 @@ export default function App() {
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
   const [showEspelhoModal, setShowEspelhoModal] = useState<boolean>(false);
   const [selectedEmpForDetail, setSelectedEmpForDetail] = useState<Employee | null>(null);
+  const [showTabletKiosk, setShowTabletKiosk] = useState<boolean>(false);
 
   // Sync days when date changes or on load
   useEffect(() => {
@@ -377,6 +379,79 @@ export default function App() {
     }
   };
 
+  // Tablet Kiosk Punch Registration
+  const handleTabletPunch = (
+    employeeId: string,
+    punchType: PunchType,
+    photoUrl?: string
+  ) => {
+    const now = new Date();
+    const targetDay = todayNumber;
+
+    const timeFormatted = `${String(now.getHours()).padStart(2, '0')}:${String(
+      now.getMinutes()
+    ).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+
+    const newPunch: PunchRecord = {
+      id: `tablet-${Date.now()}`,
+      type: punchType,
+      timestamp: now.toISOString(),
+      timeFormatted,
+      photoUrl,
+      location: { ...location },
+      status: 'APROVADO',
+      notes: 'Registrado via Tablet / Ponto Fixo da Empresa',
+    };
+
+    setEmployees((prev) =>
+      prev.map((emp) => {
+        if (emp.id !== employeeId) return emp;
+
+        const updatedDays = emp.days.map((day) => {
+          if (day.day !== targetDay) return day;
+
+          const updatedPunches = [...day.punches, newPunch];
+          const workedMins = calculateDayWorkedMinutes(
+            updatedPunches,
+            emp.lunchMode || 'AUTOMATICO',
+            emp.lunchDurationMinutes || 60
+          );
+          const balance = workedMins - day.expectedHours * 60;
+
+          return {
+            ...day,
+            punches: updatedPunches,
+            workedMinutes: workedMins,
+            balanceMinutes: balance,
+            status: 'EM_ANDAMENTO' as const,
+          };
+        });
+
+        const newBankMinutes = updatedDays
+          .filter((d) => d.status === 'TRABALHADO' || d.status === 'EM_ANDAMENTO')
+          .reduce((acc, curr) => acc + curr.balanceMinutes, 0);
+
+        return {
+          ...emp,
+          days: updatedDays,
+          lastPunchType: punchType,
+          lastPunchTime: timeFormatted,
+          bancoDeHorasMinutes: newBankMinutes,
+        };
+      })
+    );
+
+    try {
+      confetti({
+        particleCount: 90,
+        spread: 70,
+        origin: { y: 0.7 },
+      });
+    } catch (e) {
+      console.warn('Confetti error', e);
+    }
+  };
+
   // Manual Punch Adjustment Request by employee
   const handleRequestAdjustment = (
     dayNumber: number,
@@ -508,6 +583,7 @@ export default function App() {
       <LoginScreen
         employees={employees}
         onLoginSuccess={handleLoginSuccess}
+        onOpenTabletKiosk={() => setShowTabletKiosk(true)}
       />
     );
   }
@@ -559,6 +635,7 @@ export default function App() {
                       selectedDay={selectedDay}
                       onSelectEmployeeForHistory={(emp) => {
                         setCurrentEmpId(emp.id);
+                        setSelectedEmpForDetail(emp);
                         setActiveTab('historico');
                       }}
                       onSelectEmployeeForEspelho={(emp) => {
@@ -605,10 +682,13 @@ export default function App() {
 
               {activeTab === 'historico' && (
                 <HistoryTab
-                  employee={currentEmployee}
+                  employee={selectedEmpForDetail || currentEmployee}
                   employees={employees}
                   isAdmin={currentUserRole === 'GESTOR' || isAdminView}
-                  onSelectEmployee={(emp) => setCurrentEmpId(emp.id)}
+                  onSelectEmployee={(emp) => {
+                    setCurrentEmpId(emp.id);
+                    setSelectedEmpForDetail(emp);
+                  }}
                   onRequestAdjustment={handleRequestAdjustment}
                   onOpenEspelhoPrint={currentUserRole === 'GESTOR' || isAdminView ? () => setShowEspelhoModal(true) : undefined}
                 />
@@ -636,6 +716,7 @@ export default function App() {
                     setShowEspelhoModal(true);
                   }}
                   onUpdateEmployeeLunch={handleUpdateEmployeeLunch}
+                  onOpenTabletKiosk={() => setShowTabletKiosk(true)}
                 />
               )}
             </>
@@ -650,6 +731,16 @@ export default function App() {
           location={location}
           onCapture={handlePunchCapture}
         />
+
+        {/* Tablet Kiosk Modal */}
+        {showTabletKiosk && (
+          <TabletKioskModal
+            employees={employees}
+            onRegisterPunch={handleTabletPunch}
+            onClose={() => setShowTabletKiosk(false)}
+            managerPassword={ownerSettings.managerPassword || '1234'}
+          />
+        )}
 
         {/* Espelho de Ponto Printable View */}
         {showEspelhoModal && (isAdminView || currentUserRole === 'GESTOR' || currentUserRole === 'PROPRIETARIO') && (
@@ -685,6 +776,7 @@ export default function App() {
           onSwitchRole={(role) => setCurrentUserRole(role)}
           masterPassword={ownerSettings.masterPassword}
           onLogout={handleLogout}
+          onOpenTabletKiosk={() => setShowTabletKiosk(true)}
         />
 
         {/* Bottom Navigation Navbar */}

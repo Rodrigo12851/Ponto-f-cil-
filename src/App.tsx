@@ -652,7 +652,7 @@ export default function App() {
         />
 
         {/* Espelho de Ponto Printable View */}
-        {showEspelhoModal && isAdminView && (
+        {showEspelhoModal && (isAdminView || currentUserRole === 'GESTOR' || currentUserRole === 'PROPRIETARIO') && (
           <EspelhoPontoPrint
             employee={selectedEmpForDetail || currentEmployee}
             onClose={() => {
@@ -669,8 +669,11 @@ export default function App() {
           activeTab={activeTab}
           onSelectTab={(tab) => {
             setActiveTab(tab);
-            if (tab === 'admin') setIsAdminView(true);
-            else if (tab !== 'proprietario') setIsAdminView(false);
+            if (currentUserRole === 'GESTOR' || currentUserRole === 'PROPRIETARIO' || tab === 'admin') {
+              setIsAdminView(true);
+            } else {
+              setIsAdminView(false);
+            }
           }}
           currentEmployee={currentEmployee}
           employees={employees}
@@ -689,8 +692,11 @@ export default function App() {
           activeTab={activeTab}
           onSelectTab={(tab) => {
             setActiveTab(tab);
-            if (tab === 'admin') setIsAdminView(true);
-            else setIsAdminView(false);
+            if (currentUserRole === 'GESTOR' || currentUserRole === 'PROPRIETARIO' || tab === 'admin') {
+              setIsAdminView(true);
+            } else {
+              setIsAdminView(false);
+            }
           }}
           isAdminView={isAdminView}
           currentUserRole={currentUserRole}

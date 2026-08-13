@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Camera, X, CheckCircle, MapPin, RefreshCw, AlertCircle, ShieldCheck, Sparkles, Timer, Zap, AlertTriangle, AlertOctagon } from 'lucide-react';
+import { Camera, X, CheckCircle, MapPin, RefreshCw, AlertCircle, ShieldCheck, Sparkles, Timer, Zap, AlertTriangle, AlertOctagon, UserCheck, UserX } from 'lucide-react';
 import { Employee, LocationData, PunchType } from '../types';
 import { getPunchTypeLabel } from '../utils/timeFormatters';
 import { requestScreenWakeLock, releaseScreenWakeLock } from '../utils/wakeLock';
-import { verifyAndRecognizeFace } from '../utils/faceBiometrics';
+import { verifyEmployeeFaceAgainstAvatar, verifyAndRecognizeFace } from '../utils/faceBiometrics';
 
 interface CameraModalProps {
   isOpen: boolean;
@@ -36,6 +36,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
   const [countdownProgress, setCountdownProgress] = useState<number>(0); // 0% to 100%
   const [isFlashing, setIsFlashing] = useState<boolean>(false);
   const [isVerifyingBio, setIsVerifyingBio] = useState<boolean>(false);
+  const [bioConfidence, setBioConfidence] = useState<number>(0);
   const [bioError, setBioError] = useState<string | null>(null);
 
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -69,6 +70,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
     setCountdown(null);
     setCountdownProgress(0);
     setBioError(null);
+    setBioConfidence(0);
 
     setIsFlashing(true);
     setTimeout(() => setIsFlashing(false), 200);
@@ -88,34 +90,41 @@ export const CameraModal: React.FC<CameraModalProps> = ({
         ctx.translate(canvas.width, 0);
         ctx.scale(-1, 1);
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+        dataUrl = canvas.toDataURL('image/jpeg', 0.90);
       }
     }
 
     if (!dataUrl) {
-      setBioError('Não foi possível obter imagem da câmera.');
+      setBioError('Face not recognized. Não foi possível capturar o quadro da câmera.');
       return;
     }
 
     setCapturedImage(dataUrl);
     setIsVerifyingBio(true);
 
-    const checkEmployees = employee ? [employee] : employees;
-    if (checkEmployees.length > 0) {
-      try {
-        const bioResult = await verifyAndRecognizeFace(dataUrl, checkEmployees);
-        setIsVerifyingBio(false);
-        if (!bioResult.success) {
-          setBioError(bioResult.errorMessage || 'Validação biométrica não aprovada.');
-        } else {
-          setBioError(null);
-        }
-      } catch (err) {
-        setIsVerifyingBio(false);
-        setBioError('Erro ao validar biometria facial.');
+    try {
+      let bioResult;
+      if (employee) {
+        // Explicit 1:1 Biometric Comparison against the registered employee's official avatar
+        bioResult = await verifyEmployeeFaceAgainstAvatar(dataUrl, employee, 90);
+      } else {
+        // 1:N Biometric Comparison against registered database with strict 90% threshold
+        bioResult = await verifyAndRecognizeFace(dataUrl, employees, 90);
       }
-    } else {
+
       setIsVerifyingBio(false);
+
+      if (!bioResult.success || (bioResult.confidence !== undefined && bioResult.confidence < 90)) {
+        setBioConfidence(bioResult.confidence || 0);
+        setBioError(bioResult.errorMessage || 'Face not recognized. Rosto não reconhecido (Similaridade abaixo de 90%).');
+      } else {
+        setBioConfidence(bioResult.confidence || 95);
+        setBioError(null);
+      }
+    } catch (err) {
+      setIsVerifyingBio(false);
+      setBioConfidence(0);
+      setBioError('Face not recognized. Erro ao processar validação biométrica.');
     }
   }, [playShutterSound, stream, employee, employees]);
 
@@ -138,6 +147,8 @@ export const CameraModal: React.FC<CameraModalProps> = ({
       setCameraError(null);
       setCountdown(null);
       setCountdownProgress(0);
+      setBioError(null);
+      setBioConfidence(0);
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
       if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
       return;
@@ -223,7 +234,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
     } catch (err: any) {
       console.warn('Camera stream error:', err);
       setCameraError(
-        'Não foi possível acessar a câmera. Gerando foto ilustrativa de validação facial para o registro do ponto.'
+        'Não foi possível acessar a câmera do dispositivo. Verifique as permissões de vídeo.'
       );
     }
   };
@@ -241,6 +252,8 @@ export const CameraModal: React.FC<CameraModalProps> = ({
     setCountdownProgress(0);
     setIsAiChecking(true);
     setFaceDetected(false);
+    setBioError(null);
+    setBioConfidence(0);
     stopCamera();
     startCamera();
 
@@ -252,6 +265,10 @@ export const CameraModal: React.FC<CameraModalProps> = ({
 
   const handleConfirmAndSave = () => {
     if (!capturedImage) return;
+    if (bioError || bioConfidence < 90) {
+      alert('REGISTRO BLOQUEADO!\n\nFace not recognized: A biometria facial não foi aprovada pelo sistema com o mínimo exigido de 90% de compatibilidade.');
+      return;
+    }
     if (!location.inGeofence) {
       alert(`REGISTRO DE PONTO BLOQUEADO!\n\nSua localização atual está fora da área permitida da empresa (${location.distanceMeters || 0}m de distância) e o dispositivo não está conectado a uma rede Wi-Fi confiável.`);
       return;
@@ -269,7 +286,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md flex flex-col justify-between items-center p-4 md:p-6 text-white animate-in fade-in duration-200 select-none">
+    <div className="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md flex flex-col justify-between items-center p-4 md:p-6 text-white animate-in fade-in duration-200 select-none overflow-y-auto">
       
       {/* Flash Effect on Capture */}
       {isFlashing && (
@@ -281,7 +298,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
         <div className="flex items-center gap-2 bg-slate-900/80 px-3.5 py-1.5 rounded-full border border-slate-700">
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
           <span className="text-xs font-semibold text-slate-200">
-            Ponto Facial • {getPunchTypeLabel(punchType)}
+            Validação Facial Estrita (≥ 90%) • {getPunchTypeLabel(punchType)}
           </span>
         </div>
         <button
@@ -293,7 +310,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
       </div>
 
       {/* Camera Viewport / Preview */}
-      <div className="relative w-full max-w-md h-[420px] sm:h-[480px] bg-black rounded-3xl overflow-hidden border-2 border-slate-700 shadow-2xl flex items-center justify-center my-auto">
+      <div className="relative w-full max-w-md h-[400px] sm:h-[450px] bg-black rounded-3xl overflow-hidden border-2 border-slate-700 shadow-2xl flex items-center justify-center my-auto">
         {!capturedImage ? (
           <>
             {/* Live Video Feed */}
@@ -406,29 +423,57 @@ export const CameraModal: React.FC<CameraModalProps> = ({
             </div>
           </>
         ) : (
-          /* Captured Photo Preview */
-          <div className="relative w-full h-full bg-slate-900 flex flex-col items-center justify-center">
+          /* Captured Photo Preview with Side-by-Side Avatar Biometric Comparison */
+          <div className="relative w-full h-full bg-slate-900 flex flex-col items-center justify-center overflow-hidden">
             <img
               src={capturedImage}
               alt="Foto de Confirmação"
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover filter brightness-95 contrast-105"
             />
+
+            {/* Official Avatar Picture-in-Picture for Direct Comparison */}
+            {employee && employee.avatar && (
+              <div className="absolute bottom-3 left-3 bg-slate-950/90 p-2 rounded-2xl border-2 border-slate-700 backdrop-blur-md shadow-2xl flex items-center gap-2.5 max-w-[210px]">
+                <div className="w-11 h-11 rounded-xl overflow-hidden border border-slate-600 shrink-0">
+                  <img
+                    src={employee.avatar}
+                    alt="Foto Oficial de Cadastro"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="overflow-hidden text-left">
+                  <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Avatar Oficial</p>
+                  <p className="text-xs font-bold text-white truncate">{employee.name.split(' ')[0]}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Biometric Status Header Overlay */}
             {isVerifyingBio ? (
-              <div className="absolute top-4 bg-indigo-600 text-white px-3.5 py-1.5 rounded-full text-xs font-extrabold flex items-center gap-2 shadow-xl border border-indigo-400">
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Analisando Biometria Facial...</span>
+              <div className="absolute top-4 bg-indigo-600/95 text-white px-4 py-2 rounded-2xl text-xs font-extrabold flex items-center gap-2 shadow-2xl border border-indigo-400 backdrop-blur-md">
+                <RefreshCw className="w-4 h-4 animate-spin text-indigo-200" />
+                <span>Comparando Biometria com Foto Oficial...</span>
               </div>
             ) : bioError ? (
-              <div className="absolute top-4 inset-x-4 bg-rose-950/95 text-rose-200 border-2 border-rose-500 px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2.5 shadow-2xl backdrop-blur-md">
-                <AlertOctagon className="w-5 h-5 text-rose-400 shrink-0" />
+              <div className="absolute top-4 inset-x-3 bg-rose-950/95 text-rose-200 border-2 border-rose-500 px-4 py-3 rounded-2xl text-xs font-bold flex items-center gap-3 shadow-2xl backdrop-blur-md animate-in slide-in-from-top-2">
+                <AlertOctagon className="w-6 h-6 text-rose-400 shrink-0" />
                 <div className="text-left flex-1">
-                  <p className="font-black text-white uppercase text-[10px] tracking-wide">Biometria Não Reconhecida</p>
-                  <p className="text-[11px] leading-tight text-rose-300">{bioError}</p>
+                  <div className="flex items-center justify-between">
+                    <p className="font-black text-white uppercase text-[10px] tracking-wide flex items-center gap-1">
+                      <UserX className="w-3.5 h-3.5 text-rose-400" /> Face Not Recognized
+                    </p>
+                    <span className="text-[10px] bg-rose-900 text-rose-200 font-mono px-2 py-0.5 rounded-md border border-rose-700">
+                      Similaridade: {bioConfidence}% (Exigido: ≥90%)
+                    </span>
+                  </div>
+                  <p className="text-[11px] leading-snug text-rose-200 mt-0.5">{bioError}</p>
                 </div>
               </div>
             ) : (
-              <div className="absolute top-4 bg-emerald-500 text-slate-950 px-3.5 py-1.5 rounded-full text-xs font-extrabold flex items-center gap-1.5 shadow-lg border border-emerald-300">
-                <CheckCircle className="w-4 h-4" /> Biometria Facial Confirmada
+              <div className="absolute top-4 bg-emerald-500 text-slate-950 px-4 py-2 rounded-2xl text-xs font-black flex items-center gap-2 shadow-2xl border-2 border-emerald-300 animate-in zoom-in-95">
+                <CheckCircle className="w-4 h-4 text-slate-950" />
+                <UserCheck className="w-4 h-4 text-slate-950" />
+                <span>Face Reconhecida ({bioConfidence}% • Aprovado ≥ 90%)</span>
               </div>
             )}
           </div>
@@ -438,7 +483,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
       </div>
 
       {/* Action Buttons */}
-      <div className="w-full max-w-md flex flex-col items-center gap-3 z-20">
+      <div className="w-full max-w-md flex flex-col items-center gap-3 z-20 mt-2">
         {!capturedImage ? (
           <div className="w-full space-y-2">
             <button
@@ -449,45 +494,55 @@ export const CameraModal: React.FC<CameraModalProps> = ({
             </button>
             <p className="text-[11px] text-emerald-300 font-semibold text-center flex items-center justify-center gap-1">
               <Zap className="w-3 h-3 text-amber-400 fill-amber-400" />
-              Captura 100% automática ativa após 2s com rosto centralizado
+              Comparação facial estrita de 90% contra o avatar cadastrado
             </p>
           </div>
         ) : (
-          <div className="w-full flex gap-3">
-            <button
-              onClick={handleRetakePhoto}
-              className="flex-1 py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-sm rounded-2xl transition cursor-pointer border border-slate-700 flex items-center justify-center gap-1.5"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Tirar Outra
-            </button>
-            <button
-              disabled={isSubmitting || isVerifyingBio || Boolean(bioError)}
-              onClick={handleConfirmAndSave}
-              className={`flex-2 py-3.5 font-extrabold text-sm rounded-2xl shadow-lg transition flex items-center justify-center gap-2 ${
-                bioError || isVerifyingBio
-                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
-                  : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/30 cursor-pointer active:scale-95'
-              }`}
-            >
-              {isSubmitting ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" /> Registrando...
-                </>
-              ) : isVerifyingBio ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" /> Verificando...
-                </>
-              ) : bioError ? (
-                <>
-                  <AlertTriangle className="w-4 h-4 text-rose-400" /> Rosto Inválido
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="w-4 h-4" /> SALVAR PONTO AGORA
-                </>
-              )}
-            </button>
+          <div className="w-full space-y-2">
+            <div className="w-full flex gap-3">
+              <button
+                onClick={handleRetakePhoto}
+                className="flex-1 py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-sm rounded-2xl transition cursor-pointer border border-slate-700 flex items-center justify-center gap-1.5"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Tirar Outra Foto
+              </button>
+              
+              <button
+                disabled={isSubmitting || isVerifyingBio || Boolean(bioError) || bioConfidence < 90}
+                onClick={handleConfirmAndSave}
+                className={`flex-2 py-3.5 font-extrabold text-sm rounded-2xl shadow-lg transition flex items-center justify-center gap-2 ${
+                  bioError || isVerifyingBio || bioConfidence < 90
+                    ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700 opacity-60'
+                    : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/30 cursor-pointer active:scale-95'
+                }`}
+              >
+                {isSubmitting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" /> Registrando Ponto...
+                  </>
+                ) : isVerifyingBio ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" /> Comparando Biometria...
+                  </>
+                ) : bioError || bioConfidence < 90 ? (
+                  <>
+                    <AlertTriangle className="w-4 h-4 text-rose-400" /> Ponto Bloqueado (Rosto Inválido)
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4" /> CONFIRMAR E SALVAR PONTO
+                  </>
+                )}
+              </button>
+            </div>
+
+            {bioError && (
+              <p className="text-[11px] text-rose-400 font-bold text-center flex items-center justify-center gap-1.5">
+                <AlertOctagon className="w-3.5 h-3.5 text-rose-400" />
+                Bloqueado: Rosto não identificado ou similaridade &lt; 90% com a foto do colaborador.
+              </p>
+            )}
           </div>
         )}
 
@@ -498,4 +553,3 @@ export const CameraModal: React.FC<CameraModalProps> = ({
     </div>
   );
 };
-

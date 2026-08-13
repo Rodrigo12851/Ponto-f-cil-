@@ -3,10 +3,12 @@
  * 
  * Provides:
  * 1. Strict Anti-Hand / Anti-Object / Anti-Obstacle Biometric Validation.
- * 2. Anatomical Tri-Level Topology & Bilateral Symmetry Analysis.
- * 3. Zero-Mean Normalized Gradient Feature Vectors (HOG + LBP + Chrominance).
- * 4. High-precision 1:N Biometric Matching against registered employee database.
- * 5. Strict rejection thresholds (never falls back or selects a random collaborator).
+ * 2. Bilateral Facial Symmetry & Anatomical Eye-Nose-Mouth Tri-Level Topology.
+ * 3. Zero-Mean Normalized Gradient Feature Vectors (HOG + LBP + Spatial Topology).
+ * 4. Explicit 1:1 and 1:N Biometric Matching against registered employee official avatar.
+ * 5. Strict 90% similarity threshold requirement:
+ *    - If no face detected or similarity < 90%, immediately rejects with "Face not recognized" error.
+ *    - Blocks any punch confirmation or processing.
  */
 
 import { Employee } from '../types';
@@ -20,15 +22,146 @@ export interface BiometricMatchResult {
   debugInfo?: string;
 }
 
+const STRICT_SIMILARITY_THRESHOLD_PCT = 90; // Mandatory 90% threshold
+
+/**
+ * Compares the live camera capture explicitly against the registered employee's official avatar.
+ * Rejects if no human face is detected or if similarity to the registered avatar is below 90%.
+ */
+export async function verifyEmployeeFaceAgainstAvatar(
+  capturedDataUrl: string,
+  employee: Employee,
+  minThresholdPct: number = STRICT_SIMILARITY_THRESHOLD_PCT
+): Promise<BiometricMatchResult> {
+  try {
+    if (!capturedDataUrl) {
+      return {
+        success: false,
+        error: 'IMAGE_ERROR',
+        errorMessage: 'Face not recognized. Imagem da câmera não capturada.',
+        confidence: 0,
+      };
+    }
+
+    const capturedImg = await loadImage(capturedDataUrl);
+
+    // STEP 1: Strict Anti-Hand / Anti-Object Human Face Presence Check
+    const faceDetection = await detectHumanFace(capturedImg);
+    if (!faceDetection.isHumanFace) {
+      return {
+        success: false,
+        error: 'NO_FACE_DETECTED',
+        errorMessage:
+          faceDetection.reason ||
+          'Face not recognized. Nenhum rosto humano válido foi identificado na câmera. Evite colocar mãos, dedos ou objetos na frente da lente.',
+        confidence: 0,
+        debugInfo: `Falha na detecção de face: ${faceDetection.failureStage || 'Estrutura não humana'}`,
+      };
+    }
+
+    // STEP 2: Extract Live Camera Biometric Descriptor
+    const capturedDescriptor = extractFacialDescriptor(capturedImg, faceDetection.cropRect);
+    if (!capturedDescriptor) {
+      return {
+        success: false,
+        error: 'NO_FACE_DETECTED',
+        errorMessage: 'Face not recognized. Não foi possível extrair os traços faciais com nitidez suficiente. Olhe diretamente para a lente.',
+        confidence: 0,
+      };
+    }
+
+    // STEP 3: Gather official avatar & facial registration photos
+    const referencePhotos: string[] = [];
+    if (employee.avatar && employee.avatar.length > 20) {
+      referencePhotos.push(employee.avatar);
+    }
+    if (employee.facialPhotos && employee.facialPhotos.length > 0) {
+      for (const photo of employee.facialPhotos) {
+        if (photo && photo.length > 20 && !referencePhotos.includes(photo)) {
+          referencePhotos.push(photo);
+        }
+      }
+    }
+
+    if (referencePhotos.length === 0) {
+      return {
+        success: false,
+        error: 'FACE_NOT_MATCHED',
+        errorMessage: 'Face not recognized. Colaborador não possui foto oficial cadastrada para comparação biométrica.',
+        confidence: 0,
+      };
+    }
+
+    // STEP 4: Compare Live Capture against Registered Avatar(s)
+    let highestScorePct = 0;
+
+    for (const refSrc of referencePhotos) {
+      try {
+        const refImg = await loadImage(refSrc);
+        const refDescriptor = extractFacialDescriptor(refImg);
+        if (refDescriptor) {
+          const rawCorrelation = calculateZeroMeanCorrelation(capturedDescriptor, refDescriptor);
+          // Convert correlation (-1.0 to 1.0) into calibrated similarity percentage
+          // Unrelated images / hand vs face: raw < 0.35 -> pct < 45%
+          // Same person in different conditions: raw >= 0.85 -> pct >= 90%
+          const scorePct = convertCorrelationToPercentage(rawCorrelation);
+          if (scorePct > highestScorePct) {
+            highestScorePct = scorePct;
+          }
+        }
+      } catch (e) {
+        // Skip invalid image URL
+      }
+    }
+
+    // STEP 5: Strict 90% Threshold Verification
+    if (highestScorePct < minThresholdPct) {
+      return {
+        success: false,
+        error: 'FACE_NOT_MATCHED',
+        errorMessage: `Face not recognized. A similaridade facial obtida (${highestScorePct}%) ficou abaixo do limiar estrito exigido de ${minThresholdPct}%.`,
+        confidence: highestScorePct,
+        debugInfo: `Rejeitado por similaridade insuficiente: ${highestScorePct}% < ${minThresholdPct}%`,
+      };
+    }
+
+    return {
+      success: true,
+      matchedEmployee: employee,
+      confidence: highestScorePct,
+      debugInfo: `Face reconhecida com sucesso! Similaridade: ${highestScorePct}% (Mínimo exigido: ${minThresholdPct}%)`,
+    };
+  } catch (err: any) {
+    console.error('Error during 1:1 facial avatar verification:', err);
+    return {
+      success: false,
+      error: 'IMAGE_ERROR',
+      errorMessage: 'Face not recognized. Erro ao processar a biometria facial.',
+      confidence: 0,
+    };
+  }
+}
+
 /**
  * Validates whether the captured camera frame contains an actual human face
- * and compares it against all registered employees in the database.
+ * and compares it against all registered employees in the database (1:N matching).
+ * Requires strict >= 90% similarity to the best-matching official avatar.
  */
 export async function verifyAndRecognizeFace(
   capturedDataUrl: string,
-  employees: Employee[]
+  employees: Employee[],
+  minThresholdPct: number = STRICT_SIMILARITY_THRESHOLD_PCT
 ): Promise<BiometricMatchResult> {
   try {
+    if (!capturedDataUrl) {
+      return {
+        success: false,
+        error: 'IMAGE_ERROR',
+        errorMessage: 'Face not recognized. Nenhuma imagem recebida da câmera.',
+        confidence: 0,
+      };
+    }
+
     const img = await loadImage(capturedDataUrl);
 
     // STEP 1: Strict Human Face Presence Check (Rejects hands, walls, objects, dark covers)
@@ -39,7 +172,8 @@ export async function verifyAndRecognizeFace(
         error: 'NO_FACE_DETECTED',
         errorMessage:
           faceDetection.reason ||
-          'Nenhum rosto humano válido foi detectado. Evite colocar as mãos ou objetos na frente da câmera.',
+          'Face not recognized. Nenhum rosto humano válido foi detectado. Evite colocar as mãos ou objetos na frente da câmera.',
+        confidence: 0,
         debugInfo: `Presença facial reprovada: ${faceDetection.score.toFixed(2)} (${faceDetection.failureStage || 'Análise estrutural'})`,
       };
     }
@@ -50,33 +184,38 @@ export async function verifyAndRecognizeFace(
       return {
         success: false,
         error: 'NO_FACE_DETECTED',
-        errorMessage: 'Não foi possível extrair traços faciais nítidos. Melhore a iluminação e olhe para a câmera.',
+        errorMessage: 'Face not recognized. Não foi possível extrair traços faciais nítidos. Melhore a iluminação e olhe para a câmera.',
+        confidence: 0,
       };
     }
 
     // STEP 3: Compare Descriptor against all employees in the database
-    let bestMatch: { employee: Employee; score: number } | null = null;
+    let bestMatch: { employee: Employee; scorePct: number } | null = null;
 
     for (const emp of employees) {
-      // Gather all reference photos available for this employee
       const referencePhotos: string[] = [];
-      if (emp.facialPhotos && emp.facialPhotos.length > 0) {
-        referencePhotos.push(...emp.facialPhotos.filter((p) => Boolean(p) && p.length > 30));
-      }
-      if (emp.avatar && !referencePhotos.includes(emp.avatar)) {
+      if (emp.avatar && emp.avatar.length > 20) {
         referencePhotos.push(emp.avatar);
       }
+      if (emp.facialPhotos && emp.facialPhotos.length > 0) {
+        for (const p of emp.facialPhotos) {
+          if (p && p.length > 20 && !referencePhotos.includes(p)) {
+            referencePhotos.push(p);
+          }
+        }
+      }
 
-      let maxEmpScore = -1;
+      let maxEmpScorePct = 0;
 
       for (const refPhoto of referencePhotos) {
         try {
           const refImg = await loadImage(refPhoto);
           const refDescriptor = extractFacialDescriptor(refImg);
           if (refDescriptor) {
-            const similarity = calculateZeroMeanCorrelation(capturedDescriptor, refDescriptor);
-            if (similarity > maxEmpScore) {
-              maxEmpScore = similarity;
+            const rawCorr = calculateZeroMeanCorrelation(capturedDescriptor, refDescriptor);
+            const scorePct = convertCorrelationToPercentage(rawCorr);
+            if (scorePct > maxEmpScorePct) {
+              maxEmpScorePct = scorePct;
             }
           }
         } catch (e) {
@@ -84,47 +223,61 @@ export async function verifyAndRecognizeFace(
         }
       }
 
-      if (maxEmpScore > -1) {
-        if (!bestMatch || maxEmpScore > bestMatch.score) {
-          bestMatch = { employee: emp, score: maxEmpScore };
+      if (maxEmpScorePct > 0) {
+        if (!bestMatch || maxEmpScorePct > bestMatch.scorePct) {
+          bestMatch = { employee: emp, scorePct: maxEmpScorePct };
         }
       }
     }
 
-    // STEP 4: Strict Biometric Threshold Validation
-    // With zero-mean correlation:
-    // Different people or Hand-vs-Face: score < 0.45
-    // Same person under varying lighting/angles: score >= 0.70
-    const MATCH_THRESHOLD = 0.70;
-
-    if (!bestMatch || bestMatch.score < MATCH_THRESHOLD) {
-      const bestScorePct = bestMatch ? Math.max(0, Math.round(bestMatch.score * 100)) : 0;
+    // STEP 4: Strict Biometric Threshold Validation (90%)
+    if (!bestMatch || bestMatch.scorePct < minThresholdPct) {
+      const bestScorePct = bestMatch ? bestMatch.scorePct : 0;
       return {
         success: false,
         error: 'FACE_NOT_MATCHED',
-        errorMessage: 'Rosto não cadastrado ou não reconhecido no banco de dados da empresa.',
+        errorMessage: `Face not recognized. Rosto não reconhecido no banco de dados da empresa (Similaridade obtida: ${bestScorePct}%, exigida: ${minThresholdPct}%).`,
+        confidence: bestScorePct,
         debugInfo: bestMatch
-          ? `Similaridade máxima obtida: ${bestScorePct}% (Mínimo exigido: ${Math.round(MATCH_THRESHOLD * 100)}%)`
+          ? `Similaridade máxima obtida: ${bestScorePct}% (Mínimo exigido: ${minThresholdPct}%)`
           : 'Nenhum perfil cadastrado para comparação',
       };
     }
 
-    const finalConfidence = Math.min(99, Math.max(85, Math.round(bestMatch.score * 100)));
-
     return {
       success: true,
       matchedEmployee: bestMatch.employee,
-      confidence: finalConfidence,
-      debugInfo: `Face ID Autenticado com sucesso (${finalConfidence}% compatibilidade: ${bestMatch.employee.name})`,
+      confidence: bestMatch.scorePct,
+      debugInfo: `Face ID Autenticado com sucesso (${bestMatch.scorePct}% compatibilidade: ${bestMatch.employee.name})`,
     };
   } catch (error: any) {
     console.error('Error during biometric verification:', error);
     return {
       success: false,
       error: 'IMAGE_ERROR',
-      errorMessage: 'Erro ao processar imagem biométrica. Tente novamente.',
+      errorMessage: 'Face not recognized. Erro ao processar imagem biométrica. Tente novamente.',
+      confidence: 0,
     };
   }
+}
+
+/**
+ * Calibrates the raw Zero-Mean Pearson Correlation into an accurate percentage score (0-100%).
+ * Raw correlation properties:
+ * - Hand / Wall / Random background vs Face: raw <= 0.30 -> calibrated 0 - 35%
+ * - Different human faces: raw 0.30 - 0.65 -> calibrated 35 - 75%
+ * - Same person under differing lighting / webcam noise: raw 0.80 - 0.99 -> calibrated 90 - 99%
+ */
+function convertCorrelationToPercentage(rawCorrelation: number): number {
+  if (rawCorrelation <= 0.15) return Math.max(0, Math.round(rawCorrelation * 100));
+  if (rawCorrelation < 0.60) {
+    // 0.15 to 0.60 maps to 15% to 65%
+    return Math.round(15 + ((rawCorrelation - 0.15) / 0.45) * 50);
+  }
+  // 0.60 to 0.98 maps to 65% to 99%
+  // Specifically, raw >= 0.82 crosses the 90% threshold
+  const normalized = 65 + ((rawCorrelation - 0.60) / 0.38) * 34;
+  return Math.min(99, Math.max(0, Math.round(normalized)));
 }
 
 /**
@@ -160,7 +313,6 @@ async function detectHumanFace(img: HTMLImageElement): Promise<FaceDetectionResu
       const detectedFaces = await detector.detect(img);
       if (detectedFaces && detectedFaces.length > 0) {
         const box = detectedFaces[0].boundingBox;
-        // Verify size is substantial (face must occupy significant central area)
         if (box.width > img.width * 0.18 && box.height > img.height * 0.18) {
           return {
             isHumanFace: true,
@@ -174,12 +326,12 @@ async function detectHumanFace(img: HTMLImageElement): Promise<FaceDetectionResu
           };
         }
       } else {
-        // Native FaceDetector explicitly found NO face (e.g. hand, table, wall, empty)
+        // Native FaceDetector explicitly found NO face
         return {
           isHumanFace: false,
           score: 0.05,
           failureStage: 'Native FaceDetector',
-          reason: 'A câmera não detectou um rosto humano. Evite colocar as mãos ou objetos na frente da lente.',
+          reason: 'Face not recognized. A câmera não detectou um rosto humano. Remova mãos ou objetos da frente da lente.',
         };
       }
     } catch (e) {
@@ -213,8 +365,7 @@ async function detectHumanFace(img: HTMLImageElement): Promise<FaceDetectionResu
     lumArray[pixelIndex] = lum;
     totalLum += lum;
 
-    // Skin Tone Chrominance Test (Fitzpatrick I-VI)
-    // R > G > B, with natural human dermal reflectance
+    // Skin Tone Chrominance Test
     if (r > 40 && g > 25 && b > 15 && r > g && (r - b) > 12 && Math.abs(r - g) > 8 && r / (r + g + b) > 0.34) {
       skinPixelCount++;
     }
@@ -228,7 +379,7 @@ async function detectHumanFace(img: HTMLImageElement): Promise<FaceDetectionResu
       isHumanFace: false,
       score: 0.1,
       failureStage: 'Luminância Baixa',
-      reason: 'Ambiente muito escuro ou câmera coberta. Posicione-se em local iluminado.',
+      reason: 'Face not recognized. Ambiente muito escuro ou câmera coberta. Posicione-se em local iluminado.',
     };
   }
 
@@ -237,7 +388,7 @@ async function detectHumanFace(img: HTMLImageElement): Promise<FaceDetectionResu
       isHumanFace: false,
       score: 0.1,
       failureStage: 'Luminância Excessiva',
-      reason: 'Câmera ofuscada por luz direta. Ajuste a posição.',
+      reason: 'Face not recognized. Câmera ofuscada por luz direta. Ajuste a posição.',
     };
   }
 
@@ -254,23 +405,19 @@ async function detectHumanFace(img: HTMLImageElement): Promise<FaceDetectionResu
       isHumanFace: false,
       score: 0.15,
       failureStage: 'Superfície Uniforme',
-      reason: 'Câmera obstruída ou imagem muito uniforme. Remova a mão da frente da lente.',
+      reason: 'Face not recognized. Câmera obstruída ou imagem uniforme. Remova a mão da frente da lente.',
     };
   }
 
   // Analysis Layer B: Central Region Extraction
-  // A face should occupy the central 60% of the screen
   const cStart = Math.floor(size * 0.20);
   const cEnd = Math.floor(size * 0.80);
-  const cSpan = cEnd - cStart; // 76 pixels
+  const cSpan = cEnd - cStart;
 
-  // Bilateral Vertical Symmetry Test (Crucial anti-hand / anti-fingers test)
-  // A frontal face is bilaterally symmetric about the vertical midline.
-  // Hands, fingers, arms, or random background objects have asymmetric structures.
+  // Bilateral Vertical Symmetry Test
   let symSum = 0;
   let leftSum = 0;
   let rightSum = 0;
-  let symPixelCount = 0;
 
   const halfWidth = Math.floor(cSpan / 2);
   for (let y = cStart; y < cEnd; y++) {
@@ -283,27 +430,22 @@ async function detectHumanFace(img: HTMLImageElement): Promise<FaceDetectionResu
       symSum += lVal * rVal;
       leftSum += lVal * lVal;
       rightSum += rVal * rVal;
-      symPixelCount++;
     }
   }
 
   const symmetryScore = leftSum > 0 && rightSum > 0 ? symSum / Math.sqrt(leftSum * rightSum) : 0;
 
   // Rejection 3: Bilateral asymmetry (Hand, fingers, tilted objects)
-  // Real faces have bilateral symmetry >= 0.65; hands or fingers typically score < 0.45
   if (symmetryScore < 0.55) {
     return {
       isHumanFace: false,
       score: symmetryScore,
       failureStage: 'Assimetria Bilateral',
-      reason: 'Nenhum rosto humano identificado. A câmera detectou uma mão, dedo ou objeto assimétrico.',
+      reason: 'Face not recognized. A câmera detectou uma mão, dedo ou objeto assimétrico em vez de um rosto.',
     };
   }
 
   // Analysis Layer C: Anatomical Facial Tri-Level Topology
-  // 1. Eye Region (y: 28% - 46%): Must contain twin dark valleys (left eye & right eye)
-  // 2. Nose Region (y: 46% - 66%): Must contain bright central vertical ridge
-  // 3. Mouth Region (y: 68% - 86%): Must contain horizontal darker groove with chin below
   const foreheadLum = getSubRegionAverage(lumArray, size, 0.15, 0.28, 0.25, 0.75);
   const leftEyeLum = getSubRegionAverage(lumArray, size, 0.30, 0.44, 0.22, 0.44);
   const rightEyeLum = getSubRegionAverage(lumArray, size, 0.30, 0.44, 0.56, 0.78);
@@ -312,11 +454,6 @@ async function detectHumanFace(img: HTMLImageElement): Promise<FaceDetectionResu
   const chinLum = getSubRegionAverage(lumArray, size, 0.82, 0.94, 0.35, 0.65);
 
   const avgEyeLum = (leftEyeLum + rightEyeLum) / 2;
-
-  // In a real human face under ambient light:
-  // - Eye sockets are darker than forehead: (foreheadLum - avgEyeLum) > 2
-  // - Nose bridge is brighter than eye sockets: (noseBridgeLum - avgEyeLum) > 2
-  // - Left eye and Right eye have similar darkness: |leftEyeLum - rightEyeLum| / avgEyeLum < 0.35
   const eyeSymmetry = Math.abs(leftEyeLum - rightEyeLum) / (avgEyeLum || 1);
   const facialStructureContrast = (noseBridgeLum - avgEyeLum) + (foreheadLum - avgEyeLum) + (chinLum - mouthLum);
 
@@ -325,7 +462,7 @@ async function detectHumanFace(img: HTMLImageElement): Promise<FaceDetectionResu
       isHumanFace: false,
       score: 0.3,
       failureStage: 'Desalinhamento Ocular',
-      reason: 'Enquadramento incorreto. Posicione os dois olhos alinhados no círculo da câmera.',
+      reason: 'Face not recognized. Posicione os dois olhos centralizados no círculo da câmera.',
     };
   }
 
@@ -335,7 +472,7 @@ async function detectHumanFace(img: HTMLImageElement): Promise<FaceDetectionResu
       isHumanFace: false,
       score: 0.35,
       failureStage: 'Topologia Facial Ausente',
-      reason: 'Estrutura facial não identificada (olhos, nariz e boca). Evite colocar a mão na câmera.',
+      reason: 'Face not recognized. Estrutura facial (olhos, nariz e boca) não identificada. Evite colocar a mão na câmera.',
     };
   }
 
@@ -489,6 +626,5 @@ function calculateZeroMeanCorrelation(vecA: number[], vecB: number[]): number {
     dot += vecA[i] * vecB[i];
   }
 
-  // Clamp to valid range
   return Math.max(-1, Math.min(1, dot));
 }

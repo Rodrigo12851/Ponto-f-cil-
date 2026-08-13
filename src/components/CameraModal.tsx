@@ -167,6 +167,11 @@ export const CameraModal: React.FC<CameraModalProps> = ({
 
   const handleConfirmAndSave = () => {
     if (!capturedImage) return;
+    if (!location.inGeofence) {
+      alert(`REGISTRO DE PONTO BLOQUEADO!\n\nSua localização atual está fora da área permitida da empresa (${location.distanceMeters || 0}m de distância) e o dispositivo não está conectado a uma rede Wi-Fi confiável.`);
+      return;
+    }
+
     setIsSubmitting(true);
 
     setTimeout(() => {
@@ -241,15 +246,29 @@ export const CameraModal: React.FC<CameraModalProps> = ({
             )}
 
             {/* GPS Geofence badge inside camera */}
-            <div className="absolute bottom-4 left-4 right-4 bg-slate-900/85 backdrop-blur-md p-3 rounded-2xl border border-slate-700 text-xs flex items-center justify-between gap-2 shadow-lg">
+            <div
+              className={`absolute bottom-4 left-4 right-4 backdrop-blur-md p-3 rounded-2xl border text-xs flex items-center justify-between gap-2 shadow-lg ${
+                location.inGeofence
+                  ? 'bg-slate-900/85 border-slate-700 text-white'
+                  : 'bg-rose-950/90 border-rose-600 text-rose-100'
+              }`}
+            >
               <div className="flex items-center gap-2 overflow-hidden">
-                <MapPin className="w-4 h-4 text-emerald-400 shrink-0" />
+                <MapPin
+                  className={`w-4 h-4 shrink-0 ${
+                    location.inGeofence ? 'text-emerald-400' : 'text-rose-400'
+                  }`}
+                />
                 <div className="truncate">
-                  <p className="font-semibold text-white truncate">{location.address}</p>
-                  <p className="text-[10px] text-slate-400">
+                  <p className="font-semibold truncate">{location.address}</p>
+                  <p
+                    className={`text-[10px] font-bold ${
+                      location.inGeofence ? 'text-emerald-400' : 'text-rose-300'
+                    }`}
+                  >
                     {location.inGeofence
                       ? '✓ Dentro da cerca geográfica da empresa'
-                      : '⚠ Localização Externa Registrada'}
+                      : `❌ FORA DA ÁREA PERMITIDA (${location.distanceMeters || 0}m) - Registro Bloqueado`}
                   </p>
                 </div>
               </div>

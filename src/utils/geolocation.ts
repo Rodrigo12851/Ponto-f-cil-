@@ -93,7 +93,7 @@ export async function fetchAddressFromCoords(lat: number, lng: number): Promise<
 export async function getCurrentLocation(
   geofence: CompanyGeofence = DEFAULT_GEOFENCE,
   simulateExternal: boolean = false,
-  connectedSsid: string = 'WIFI_EMPRESA_SEDE'
+  connectedSsid?: string
 ): Promise<LocationData> {
   return new Promise((resolve) => {
     if (simulateExternal) {
@@ -161,13 +161,13 @@ export async function getCurrentLocation(
           resolve(validatePunchLocationWithTrustedWifi(rawLoc, connectedSsid, geofence));
         },
         () => {
-          // Fallback to company headquarters center if GPS permission not granted
+          // If GPS permission was denied or failed, set inGeofence: false unless trusted Wi-Fi is detected
           const fallbackLoc: LocationData = {
-            latitude: geofence.latitude,
-            longitude: geofence.longitude,
-            address: geofence.address,
-            inGeofence: true,
-            distanceMeters: 0,
+            latitude: geofence.latitude + 0.01,
+            longitude: geofence.longitude + 0.01,
+            address: 'GPS Indisponível / Permissão de Localização Negada',
+            inGeofence: false,
+            distanceMeters: 999,
           };
           resolve(validatePunchLocationWithTrustedWifi(fallbackLoc, connectedSsid, geofence));
         },
@@ -176,13 +176,13 @@ export async function getCurrentLocation(
       return;
     }
 
-    // Default to company headquarters
+    // Default when navigator.geolocation is unsupported
     const defaultLoc: LocationData = {
-      latitude: geofence.latitude,
-      longitude: geofence.longitude,
-      address: geofence.address,
-      inGeofence: true,
-      distanceMeters: 0,
+      latitude: geofence.latitude + 0.01,
+      longitude: geofence.longitude + 0.01,
+      address: 'Navegador sem suporte a GPS',
+      inGeofence: false,
+      distanceMeters: 999,
     };
     resolve(validatePunchLocationWithTrustedWifi(defaultLoc, connectedSsid, geofence));
   });

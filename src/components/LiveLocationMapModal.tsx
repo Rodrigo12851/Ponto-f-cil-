@@ -485,10 +485,23 @@ export const LiveLocationMapModal: React.FC<LiveLocationMapModalProps> = ({
                   onDirectPunch();
                   onClose();
                 }}
-                className="py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
+                className={`py-3 px-4 text-white font-extrabold text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer ${
+                  !location.inGeofence && geofence.enforceGeofence !== false
+                    ? 'bg-amber-600 hover:bg-amber-700'
+                    : 'bg-emerald-600 hover:bg-emerald-500'
+                }`}
               >
-                <ShieldCheck className="w-4 h-4" />
-                <span>Bater Ponto Nesta Posição</span>
+                {!location.inGeofence && geofence.enforceGeofence !== false ? (
+                  <>
+                    <ShieldCheck className="w-4 h-4 text-amber-200" />
+                    <span>Fora da Cerca ({location.distanceMeters || 0}m)</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Bater Ponto Nesta Posição</span>
+                  </>
+                )}
               </button>
             )}
           </div>

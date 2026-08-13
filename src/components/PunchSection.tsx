@@ -37,15 +37,9 @@ export const PunchSection: React.FC<PunchSectionProps> = ({
   const [selectedPunchType, setSelectedPunchType] = useState<PunchType>('ENTRADA');
   const [geofenceBlockAlert, setGeofenceBlockAlert] = useState<boolean>(false);
   const [showLiveMapModal, setShowLiveMapModal] = useState<boolean>(false);
-  const [currentSsid, setCurrentSsid] = useState<string>(
-    location.connectedSsid || geofence?.wifiSsid || geofence?.trustedWifiSsid || 'WIFI_EMPRESA_SEDE'
-  );
-
-  // Evaluate Trusted Wi-Fi validation
-  const wifiCheck = isDeviceConnectedToTrustedWifi(currentSsid, geofence);
   const effectiveLocation = validatePunchLocationWithTrustedWifi(
     location,
-    currentSsid,
+    location.connectedSsid,
     geofence
   );
 
@@ -107,7 +101,7 @@ export const PunchSection: React.FC<PunchSectionProps> = ({
     }
 
     // Check geofence enforcement after Trusted Wi-Fi validation
-    if (geofence?.enforceGeofence && !effectiveLocation.inGeofence) {
+    if (geofence?.enforceGeofence !== false && !effectiveLocation.inGeofence) {
       setGeofenceBlockAlert(true);
       return;
     }
@@ -377,6 +371,11 @@ export const PunchSection: React.FC<PunchSectionProps> = ({
           onClose={() => setShowLiveMapModal(false)}
           onUpdateGeofence={onUpdateGeofence}
           onDirectPunch={() => {
+            if (geofence?.enforceGeofence !== false && !effectiveLocation.inGeofence) {
+              setShowLiveMapModal(false);
+              setGeofenceBlockAlert(true);
+              return;
+            }
             if (onDirectPunch) {
               onDirectPunch(selectedPunchType);
             }

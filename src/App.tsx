@@ -226,6 +226,13 @@ export default function App() {
 
   // Direct Punch without requiring photo/camera
   const handleDirectPunch = (type: PunchType) => {
+    if (geofence.enforceGeofence !== false && !location.inGeofence) {
+      alert(
+        `REGISTRO DE PONTO BLOQUEADO!\n\nSua localização GPS atual está fora da área delimitada da empresa (${location.distanceMeters || 0}m de distância) e você não está conectado ao Wi-Fi seguro da empresa.`
+      );
+      return;
+    }
+
     const now = new Date();
     const targetDay = todayNumber; // Live punch ALWAYS targets today!
     if (selectedDay !== todayNumber) {
@@ -296,6 +303,13 @@ export default function App() {
 
   // Handle successful snapshot capture
   const handlePunchCapture = (photoDataUrl: string) => {
+    if (geofence.enforceGeofence !== false && !location.inGeofence) {
+      alert(
+        `REGISTRO DE PONTO BLOQUEADO!\n\nSua localização GPS atual está fora da área delimitada da empresa (${location.distanceMeters || 0}m de distância) e você não está conectado ao Wi-Fi seguro da empresa.`
+      );
+      return;
+    }
+
     const now = new Date();
     const targetDay = todayNumber; // Live punch ALWAYS targets today!
     if (selectedDay !== todayNumber) {

@@ -868,11 +868,11 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
             <main className="fixed inset-0 z-40 flex flex-col items-center justify-center p-6 text-center bg-slate-950 relative overflow-hidden animate-in fade-in">
               <div className="max-w-md w-full space-y-6 flex flex-col items-center">
                 
-                {/* Captured Photo with Laser Scan Animation */}
+                {/* Official Face with Laser Scan Animation */}
                 <div className="relative w-64 h-64 sm:w-80 sm:h-80 rounded-3xl overflow-hidden border-4 border-indigo-500 shadow-2xl shadow-indigo-600/40 bg-black">
                   <img
-                    src={capturedPhoto || selectedEmployee?.avatar}
-                    alt="Foto capturada"
+                    src={selectedEmployee?.avatar}
+                    alt="Reconhecimento Facial Oficial"
                     className="w-full h-full object-cover"
                   />
                   {/* Laser Scan Line */}
@@ -898,20 +898,20 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
           )}
 
           {/* ----------------------------------------------------------- */}
-          {/* 4. CONFIRMATION STEP (TAKING THE FULL SCREEN 100%)           */}
+          {/* 4. CONFIRMATION STEP (OFFICIAL REGISTERED PHOTO FULL SCREEN) */}
           {/* ----------------------------------------------------------- */}
           {kioskStep === 'CONFIRMATION' && (
             <main className="fixed inset-0 z-40 bg-slate-950 flex flex-col justify-between overflow-y-auto p-4 sm:p-6 md:p-8 animate-in zoom-in-95">
               
               {/* Top Header */}
-              <div className="max-w-6xl w-full mx-auto flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="max-w-4xl w-full mx-auto flex items-center justify-between pb-3 border-b border-slate-800">
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 bg-indigo-950 text-indigo-400 rounded-2xl border border-indigo-800">
                     <ScanFace className="w-6 h-6" />
                   </div>
                   <div>
-                    <span className="text-[11px] font-black uppercase tracking-widest text-amber-400 bg-amber-950/80 px-3 py-0.5 rounded-full border border-amber-800">
-                      Reconhecimento Facial Biométrico
+                    <span className="text-[11px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-950/80 px-3 py-0.5 rounded-full border border-emerald-800">
+                      Reconhecimento Facial Concluído
                     </span>
                     <h2 className="text-lg sm:text-2xl font-black text-white tracking-tight mt-0.5">
                       Confirmação de Registro de Ponto
@@ -920,7 +920,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                 </div>
 
                 <div className="text-right">
-                  <span className="text-xs font-black text-emerald-400 block font-mono">
+                  <span className="text-xs sm:text-sm font-black text-emerald-400 block font-mono">
                     {currentTime.hhmm}:{currentTime.ss}
                   </span>
                   <span className="text-[11px] text-slate-400 capitalize">
@@ -929,75 +929,58 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                 </div>
               </div>
 
-              {/* Main Full-Screen Gallery: Live Captured Photo vs Registered Recognized Photo */}
-              <div className="max-w-6xl w-full mx-auto my-auto py-4 sm:py-6 grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-8 items-stretch">
+              {/* Main Full-Screen Display: ONLY Official Registered Photo */}
+              <div className="max-w-4xl w-full mx-auto my-auto py-4 sm:py-6 flex flex-col items-center justify-center">
                 
-                {/* Photo 1: Captured Live Now */}
-                <div className="bg-slate-900/90 border-2 border-emerald-500/80 rounded-3xl p-5 sm:p-6 flex flex-col items-center justify-between shadow-2xl relative overflow-hidden">
-                  <div className="w-full flex items-center justify-between mb-3">
-                    <span className="text-xs font-black uppercase text-emerald-400 tracking-wider flex items-center gap-1.5 bg-emerald-950/80 px-3 py-1 rounded-xl border border-emerald-800">
-                      <Camera className="w-4 h-4" /> Sua Foto Tirada Agora
-                    </span>
-                    <span className="text-[11px] font-mono text-slate-400">
-                      {currentTime.hhmm}:{currentTime.ss}
-                    </span>
+                <div className="w-full max-w-xl bg-slate-900/95 border-2 border-indigo-500/70 rounded-3xl p-6 sm:p-8 flex flex-col items-center text-center shadow-2xl shadow-indigo-950/60 relative overflow-hidden">
+                  
+                  {/* Badge Top */}
+                  <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-indigo-300 bg-indigo-950/90 px-4 py-1.5 rounded-full border border-indigo-700 mb-4 shadow-sm">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                    <span>Foto Cadastrada Oficial</span>
                   </div>
 
-                  <div className="w-full aspect-square max-h-[38vh] md:max-h-[46vh] rounded-2xl overflow-hidden bg-black border-2 border-emerald-400 shadow-xl relative">
-                    <img
-                      src={capturedPhoto || selectedEmployee?.avatar}
-                      alt="Foto capturada agora"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-
-                  <div className="w-full mt-3 pt-2 text-center text-xs text-slate-400 font-semibold border-t border-slate-800">
-                    Capturada via Tablet da Empresa • GPS Localizado
-                  </div>
-                </div>
-
-                {/* Photo 2: Official Recognition / System Registered Photo */}
-                <div className="bg-slate-900/90 border-2 border-indigo-500/80 rounded-3xl p-5 sm:p-6 flex flex-col items-center justify-between shadow-2xl relative overflow-hidden">
-                  <div className="w-full flex items-center justify-between mb-3">
-                    <span className="text-xs font-black uppercase text-indigo-300 tracking-wider flex items-center gap-1.5 bg-indigo-950/80 px-3 py-1 rounded-xl border border-indigo-800">
-                      <ShieldCheck className="w-4 h-4 text-emerald-400" /> Foto do Reconhecimento (Cadastro Oficial)
-                    </span>
-                    <span className="text-[10px] font-bold text-indigo-400 bg-indigo-950 px-2.5 py-0.5 rounded-full border border-indigo-800">
-                      Face ID 100% Compatível
-                    </span>
-                  </div>
-
-                  <div className="w-full aspect-square max-h-[38vh] md:max-h-[46vh] rounded-2xl overflow-hidden bg-black border-2 border-indigo-400 shadow-xl relative">
+                  {/* Big Official Registered Photo */}
+                  <div className="relative w-64 h-64 sm:w-80 sm:h-80 md:w-96 md:h-96 rounded-3xl overflow-hidden bg-black border-4 border-emerald-400 shadow-[0_0_60px_rgba(52,211,153,0.35)] mb-5">
                     <img
                       src={selectedEmployee?.avatar}
                       alt={selectedEmployee?.name}
                       className="w-full h-full object-cover"
                     />
+                    
+                    {/* Floating Match Badge */}
+                    <div className="absolute bottom-3 right-3 bg-slate-950/90 text-emerald-400 border border-emerald-400 text-xs font-black px-3 py-1.5 rounded-xl shadow-lg flex items-center gap-1.5 backdrop-blur-md">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      <span>Face ID 100%</span>
+                    </div>
                   </div>
 
-                  {/* Employee Details Card */}
-                  <div className="w-full mt-3 pt-2 border-t border-slate-800 flex items-center justify-between text-left">
-                    <div className="min-w-0">
-                      <h3 className="text-base sm:text-lg font-black text-white truncate">
-                        {selectedEmployee?.name}
-                      </h3>
-                      <p className="text-xs text-indigo-300 font-semibold truncate">
-                        {selectedEmployee?.role} • {selectedEmployee?.department}
-                      </p>
-                    </div>
-                    <div className="text-right shrink-0 ml-2">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase block">Tipo</span>
-                      <span className="text-xs sm:text-sm font-black text-emerald-400">
-                        {getPunchTypeLabel(autoPunchType)}
-                      </span>
-                    </div>
+                  {/* Employee Information */}
+                  <div className="space-y-1 w-full max-w-md">
+                    <h3 className="text-2xl sm:text-3xl md:text-4xl font-black text-white tracking-tight">
+                      {selectedEmployee?.name}
+                    </h3>
+                    <p className="text-sm sm:text-base text-indigo-300 font-semibold">
+                      {selectedEmployee?.role} • {selectedEmployee?.department}
+                    </p>
                   </div>
+
+                  {/* Punch Type Alert Box */}
+                  <div className="w-full max-w-md mt-4 py-2.5 px-4 bg-slate-950/80 border border-slate-800 rounded-2xl flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-400 uppercase tracking-wide">
+                      Registro Automático:
+                    </span>
+                    <span className="font-black text-sm text-emerald-400">
+                      {getPunchTypeLabel(autoPunchType)}
+                    </span>
+                  </div>
+
                 </div>
 
               </div>
 
               {/* Bottom Actions: CONFIRMAR PONTO vs CANCELAR */}
-              <div className="max-w-6xl w-full mx-auto pt-3 border-t border-slate-800 flex flex-col sm:flex-row items-center gap-4">
+              <div className="max-w-4xl w-full mx-auto pt-3 border-t border-slate-800 flex flex-col sm:flex-row items-center gap-4">
                 <button
                   type="button"
                   onClick={handleConfirmPunch}

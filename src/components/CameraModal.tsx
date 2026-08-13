@@ -1,14 +1,17 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Camera, X, CheckCircle, MapPin, RefreshCw, AlertCircle, ShieldCheck, Sparkles, Timer, Zap } from 'lucide-react';
-import { LocationData, PunchType } from '../types';
+import { Camera, X, CheckCircle, MapPin, RefreshCw, AlertCircle, ShieldCheck, Sparkles, Timer, Zap, AlertTriangle, AlertOctagon } from 'lucide-react';
+import { Employee, LocationData, PunchType } from '../types';
 import { getPunchTypeLabel } from '../utils/timeFormatters';
 import { requestScreenWakeLock, releaseScreenWakeLock } from '../utils/wakeLock';
+import { verifyAndRecognizeFace } from '../utils/faceBiometrics';
 
 interface CameraModalProps {
   isOpen: boolean;
   onClose: () => void;
   punchType: PunchType;
   location: LocationData;
+  employee?: Employee;
+  employees?: Employee[];
   onCapture: (photoDataUrl: string) => void;
 }
 
@@ -17,6 +20,8 @@ export const CameraModal: React.FC<CameraModalProps> = ({
   onClose,
   punchType,
   location,
+  employee,
+  employees = [],
   onCapture,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -30,6 +35,8 @@ export const CameraModal: React.FC<CameraModalProps> = ({
   const [countdown, setCountdown] = useState<number | null>(null); // 2, 1, 0
   const [countdownProgress, setCountdownProgress] = useState<number>(0); // 0% to 100%
   const [isFlashing, setIsFlashing] = useState<boolean>(false);
+  const [isVerifyingBio, setIsVerifyingBio] = useState<boolean>(false);
+  const [bioError, setBioError] = useState<string | null>(null);
 
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -55,16 +62,19 @@ export const CameraModal: React.FC<CameraModalProps> = ({
     }
   }, []);
 
-  const handleTakeSnapshot = useCallback(() => {
+  const handleTakeSnapshot = useCallback(async () => {
     // Clear any pending countdowns
     if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
     if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
     setCountdown(null);
     setCountdownProgress(0);
+    setBioError(null);
 
     setIsFlashing(true);
     setTimeout(() => setIsFlashing(false), 200);
     playShutterSound();
+
+    let dataUrl: string | null = null;
 
     if (videoRef.current && canvasRef.current && stream) {
       const video = videoRef.current;
@@ -78,34 +88,36 @@ export const CameraModal: React.FC<CameraModalProps> = ({
         ctx.translate(canvas.width, 0);
         ctx.scale(-1, 1);
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-        setCapturedImage(dataUrl);
-        return;
+        dataUrl = canvas.toDataURL('image/jpeg', 0.88);
       }
     }
 
-    // Fallback image if camera snapshot is unavailable
-    const fallbackCanvas = document.createElement('canvas');
-    fallbackCanvas.width = 400;
-    fallbackCanvas.height = 400;
-    const ctx = fallbackCanvas.getContext('2d');
-    if (ctx) {
-      ctx.fillStyle = '#1e293b';
-      ctx.fillRect(0, 0, 400, 400);
-      ctx.fillStyle = '#3b82f6';
-      ctx.beginPath();
-      ctx.arc(200, 160, 70, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(200, 320, 120, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 16px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('VALIDAÇÃO FACIAL GPS', 200, 370);
-      setCapturedImage(fallbackCanvas.toDataURL('image/jpeg'));
+    if (!dataUrl) {
+      setBioError('Não foi possível obter imagem da câmera.');
+      return;
     }
-  }, [playShutterSound, stream]);
+
+    setCapturedImage(dataUrl);
+    setIsVerifyingBio(true);
+
+    const checkEmployees = employee ? [employee] : employees;
+    if (checkEmployees.length > 0) {
+      try {
+        const bioResult = await verifyAndRecognizeFace(dataUrl, checkEmployees);
+        setIsVerifyingBio(false);
+        if (!bioResult.success) {
+          setBioError(bioResult.errorMessage || 'Validação biométrica não aprovada.');
+        } else {
+          setBioError(null);
+        }
+      } catch (err) {
+        setIsVerifyingBio(false);
+        setBioError('Erro ao validar biometria facial.');
+      }
+    } else {
+      setIsVerifyingBio(false);
+    }
+  }, [playShutterSound, stream, employee, employees]);
 
   // Keep screen awake while modal is open
   useEffect(() => {
@@ -401,9 +413,24 @@ export const CameraModal: React.FC<CameraModalProps> = ({
               alt="Foto de Confirmação"
               className="w-full h-full object-cover"
             />
-            <div className="absolute top-4 bg-emerald-500 text-slate-950 px-3 py-1 rounded-full text-xs font-extrabold flex items-center gap-1.5 shadow-lg">
-              <CheckCircle className="w-4 h-4" /> Biometria Facial Confirmada
-            </div>
+            {isVerifyingBio ? (
+              <div className="absolute top-4 bg-indigo-600 text-white px-3.5 py-1.5 rounded-full text-xs font-extrabold flex items-center gap-2 shadow-xl border border-indigo-400">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Analisando Biometria Facial...</span>
+              </div>
+            ) : bioError ? (
+              <div className="absolute top-4 inset-x-4 bg-rose-950/95 text-rose-200 border-2 border-rose-500 px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2.5 shadow-2xl backdrop-blur-md">
+                <AlertOctagon className="w-5 h-5 text-rose-400 shrink-0" />
+                <div className="text-left flex-1">
+                  <p className="font-black text-white uppercase text-[10px] tracking-wide">Biometria Não Reconhecida</p>
+                  <p className="text-[11px] leading-tight text-rose-300">{bioError}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="absolute top-4 bg-emerald-500 text-slate-950 px-3.5 py-1.5 rounded-full text-xs font-extrabold flex items-center gap-1.5 shadow-lg border border-emerald-300">
+                <CheckCircle className="w-4 h-4" /> Biometria Facial Confirmada
+              </div>
+            )}
           </div>
         )}
 
@@ -429,18 +456,31 @@ export const CameraModal: React.FC<CameraModalProps> = ({
           <div className="w-full flex gap-3">
             <button
               onClick={handleRetakePhoto}
-              className="flex-1 py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-sm rounded-2xl transition cursor-pointer border border-slate-700"
+              className="flex-1 py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-sm rounded-2xl transition cursor-pointer border border-slate-700 flex items-center justify-center gap-1.5"
             >
+              <RefreshCw className="w-4 h-4" />
               Tirar Outra
             </button>
             <button
-              disabled={isSubmitting}
+              disabled={isSubmitting || isVerifyingBio || Boolean(bioError)}
               onClick={handleConfirmAndSave}
-              className="flex-2 py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-sm rounded-2xl shadow-lg shadow-blue-600/30 transition cursor-pointer flex items-center justify-center gap-2"
+              className={`flex-2 py-3.5 font-extrabold text-sm rounded-2xl shadow-lg transition flex items-center justify-center gap-2 ${
+                bioError || isVerifyingBio
+                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+                  : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/30 cursor-pointer active:scale-95'
+              }`}
             >
               {isSubmitting ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" /> Registrando...
+                </>
+              ) : isVerifyingBio ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" /> Verificando...
+                </>
+              ) : bioError ? (
+                <>
+                  <AlertTriangle className="w-4 h-4 text-rose-400" /> Rosto Inválido
                 </>
               ) : (
                 <>

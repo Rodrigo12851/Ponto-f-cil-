@@ -1006,7 +1006,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                     {/* Floating Match Badge */}
                     <div className="absolute bottom-3 right-3 bg-slate-950/90 text-emerald-400 border border-emerald-400 text-xs font-black px-3 py-1.5 rounded-xl shadow-lg flex items-center gap-1.5 backdrop-blur-md">
                       <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                      <span>Face ID 100%</span>
+                      <span>Face ID {faceConfidence}%</span>
                     </div>
                   </div>
 

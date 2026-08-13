@@ -769,6 +769,8 @@ export default function App() {
           onClose={() => setIsCameraOpen(false)}
           punchType={cameraPunchType}
           location={location}
+          employee={currentEmployee}
+          employees={employees}
           onCapture={handlePunchCapture}
         />
 

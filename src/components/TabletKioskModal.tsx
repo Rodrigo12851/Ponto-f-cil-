@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Employee, PunchType, CompanyGeofence, LocationData } from '../types';
 import { getPunchTypeLabel, getBrazilianFullDate } from '../utils/timeFormatters';
 import { getCurrentLocation } from '../utils/geolocation';
+import { requestScreenWakeLock, releaseScreenWakeLock } from '../utils/wakeLock';
 import confetti from 'canvas-confetti';
 import {
   Tablet,
@@ -25,6 +26,8 @@ import {
   SwitchCamera,
   Maximize2,
   Sparkles,
+  Zap,
+  Timer,
 } from 'lucide-react';
 
 interface TabletKioskModalProps {
@@ -86,7 +89,11 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [currentLocation, setCurrentLocation] = useState<LocationData | null>(null);
   const [isFlashing, setIsFlashing] = useState<boolean>(false);
-  const [countdown, setCountdown] = useState<number | null>(null);
+  
+  // 2s Auto-Capture on Fullscreen Camera
+  const [autoCaptureCountdown, setAutoCaptureCountdown] = useState<number | null>(null);
+  const [autoCaptureProgress, setAutoCaptureProgress] = useState<number>(0);
+  const autoCaptureIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Success Feedback
   const [lastRegisteredEmpName, setLastRegisteredEmpName] = useState<string>('');
@@ -107,6 +114,32 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
 
   const videoElementRef = useRef<HTMLVideoElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+
+  // Screen Wake Lock Effect (Keeps Screen ALWAYS ON without sleeping)
+  useEffect(() => {
+    if (isTabletInitialized) {
+      requestScreenWakeLock();
+
+      const handleVisibilityOrFocus = () => {
+        if (document.visibilityState === 'visible') {
+          requestScreenWakeLock();
+        }
+      };
+
+      document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.addEventListener('focus', handleVisibilityOrFocus);
+      window.addEventListener('touchstart', handleVisibilityOrFocus, { passive: true });
+      window.addEventListener('click', handleVisibilityOrFocus, { passive: true });
+
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+        window.removeEventListener('focus', handleVisibilityOrFocus);
+        window.removeEventListener('touchstart', handleVisibilityOrFocus);
+        window.removeEventListener('click', handleVisibilityOrFocus);
+        releaseScreenWakeLock();
+      };
+    }
+  }, [isTabletInitialized]);
 
   // Real-time Clock
   useEffect(() => {
@@ -283,11 +316,19 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
   // Open Fullscreen Camera Screen
   const handleOpenFullscreenCamera = () => {
     setCapturedPhoto(null);
+    setAutoCaptureCountdown(null);
+    setAutoCaptureProgress(0);
     setKioskStep('CAMERA_FULLSCREEN');
   };
 
   // Capture image directly from video and initiate face recognition
-  const handleCaptureAndRecognizeFace = (targetEmployee?: Employee) => {
+  const handleCaptureAndRecognizeFace = useCallback((targetEmployee?: Employee) => {
+    if (autoCaptureIntervalRef.current) {
+      clearInterval(autoCaptureIntervalRef.current);
+    }
+    setAutoCaptureCountdown(null);
+    setAutoCaptureProgress(0);
+
     const activeEmp = targetEmployee || selectedEmployee || employees[0];
     if (!activeEmp) return;
 
@@ -330,7 +371,38 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
       playBeep();
       setKioskStep('CONFIRMATION');
     }, 1200);
-  };
+  }, [cameraFacingMode, employees, selectedEmployee]);
+
+  // Automatic 2-Second Capture on Kiosk Camera Fullscreen
+  useEffect(() => {
+    if (kioskStep === 'CAMERA_FULLSCREEN' && isCameraActive && !capturedPhoto) {
+      setAutoCaptureCountdown(2);
+      setAutoCaptureProgress(0);
+      const startTime = Date.now();
+      const duration = 2000;
+
+      autoCaptureIntervalRef.current = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(100, Math.round((elapsed / duration) * 100));
+        setAutoCaptureProgress(progress);
+        const rem = Math.max(1, Math.ceil((duration - elapsed) / 1000));
+        setAutoCaptureCountdown(rem);
+
+        if (elapsed >= duration) {
+          if (autoCaptureIntervalRef.current) clearInterval(autoCaptureIntervalRef.current);
+          handleCaptureAndRecognizeFace();
+        }
+      }, 50);
+
+      return () => {
+        if (autoCaptureIntervalRef.current) clearInterval(autoCaptureIntervalRef.current);
+      };
+    } else {
+      if (autoCaptureIntervalRef.current) clearInterval(autoCaptureIntervalRef.current);
+      setAutoCaptureCountdown(null);
+      setAutoCaptureProgress(0);
+    }
+  }, [kioskStep, isCameraActive, capturedPhoto, handleCaptureAndRecognizeFace]);
 
   // Confirm Punch ("SIM, SOU EU — CONFIRMAR PONTO")
   const handleConfirmPunch = () => {
@@ -548,10 +620,16 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                   <Tablet className="w-5 h-5" />
                 </div>
                 <div>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                    Tablet Sempre Ligado
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                      Tablet Sempre Ligado
+                    </span>
+                    <span className="text-[9px] font-extrabold uppercase tracking-wide bg-amber-950/80 text-amber-300 border border-amber-800/80 px-2 py-0.5 rounded-md flex items-center gap-1">
+                      <Zap className="w-2.5 h-2.5 fill-amber-300" />
+                      Tela Não Desliga (Wake Lock)
+                    </span>
+                  </div>
                   <h1 className="text-xs sm:text-sm font-black text-slate-200">
                     TERMINAL FIXO DE PONTO DA EMPRESA
                   </h1>
@@ -618,7 +696,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                     </div>
                     <div className="text-left">
                       <div className="leading-tight text-slate-950 font-black">BATER PONTO COM FOTO</div>
-                      <div className="text-xs text-emerald-950 font-bold opacity-90">Toque para abrir a câmera em tela cheia</div>
+                      <div className="text-xs text-emerald-950 font-bold opacity-90">Câmera em tela cheia com captura automática em 2s</div>
                     </div>
                     <ArrowRight className="w-6 h-6 ml-auto group-hover:translate-x-1 transition-transform" />
                   </button>
@@ -685,14 +763,34 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                 )}
               </div>
 
-              {/* Centered Biometric Facial HUD & Frame */}
+              {/* Centered Biometric Facial HUD & Frame & 2-Second Timer */}
               <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center z-20">
-                <div className="relative w-72 h-88 sm:w-88 sm:h-104 md:w-96 md:h-120 border-4 border-dashed border-indigo-400/90 rounded-[50%] shadow-[0_0_60px_rgba(99,102,241,0.6)] flex items-center justify-center animate-pulse">
+                <div className="relative w-72 h-88 sm:w-88 sm:h-104 md:w-96 md:h-120 border-4 border-dashed border-emerald-400/90 rounded-[50%] shadow-[0_0_60px_rgba(52,211,153,0.5)] flex flex-col items-center justify-center">
                   
                   {/* Target Guide Badge */}
-                  <div className="text-[11px] uppercase tracking-widest text-indigo-100 bg-slate-950/85 px-4 py-1.5 rounded-full font-black border border-indigo-400 shadow-xl">
-                    Posicione seu rosto aqui
+                  <div className="absolute -top-4 text-[11px] uppercase tracking-widest text-slate-950 bg-emerald-400 px-4 py-1.5 rounded-full font-black border border-emerald-300 shadow-xl flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Rosto Centralizado</span>
                   </div>
+
+                  {/* 2-Second Auto-Capture Indicator */}
+                  {autoCaptureCountdown !== null && (
+                    <div className="bg-slate-950/90 border-2 border-emerald-400 rounded-2xl px-5 py-2.5 flex flex-col items-center gap-1 shadow-2xl backdrop-blur-md animate-in zoom-in-95">
+                      <div className="flex items-center gap-1 text-amber-300 text-xs font-black">
+                        <Timer className="w-4 h-4 animate-spin text-amber-400" />
+                        <span>Capturando Face ID em</span>
+                      </div>
+                      <div className="text-3xl font-mono font-black text-emerald-400">
+                        {autoCaptureCountdown}s
+                      </div>
+                      <div className="w-32 h-1.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+                        <div
+                          className="h-full bg-gradient-to-r from-amber-400 to-emerald-400 transition-all duration-75"
+                          style={{ width: `${autoCaptureProgress}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* High-Tech Target Corner Marks */}
                   <div className="absolute -top-4 -left-4 w-10 h-10 border-t-4 border-l-4 border-amber-400 rounded-tl-2xl"></div>
@@ -747,7 +845,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                   className="w-full max-w-md py-4 sm:py-5 px-8 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-base sm:text-lg rounded-3xl shadow-2xl shadow-emerald-500/50 active:scale-95 transition flex items-center justify-center gap-3 cursor-pointer border-2 border-emerald-300"
                 >
                   <Camera className="w-6 h-6 stroke-[2.5]" />
-                  <span>CAPTURAR FOTO / RECONHECER FACE ID</span>
+                  <span>CAPTURAR AGORA OU AGUARDE 2s (AUTO)</span>
                 </button>
 
                 {/* Switch employee profile if needed */}

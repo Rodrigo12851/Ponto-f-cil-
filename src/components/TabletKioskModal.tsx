@@ -3,6 +3,7 @@ import { Employee, PunchType, CompanyGeofence, LocationData } from '../types';
 import { getPunchTypeLabel, getBrazilianFullDate } from '../utils/timeFormatters';
 import { getCurrentLocation } from '../utils/geolocation';
 import { requestScreenWakeLock, releaseScreenWakeLock } from '../utils/wakeLock';
+import { verifyAndRecognizeFace } from '../utils/faceBiometrics';
 import confetti from 'canvas-confetti';
 import {
   Tablet,
@@ -28,6 +29,8 @@ import {
   Sparkles,
   Zap,
   Timer,
+  AlertOctagon,
+  RefreshCw,
 } from 'lucide-react';
 
 interface TabletKioskModalProps {
@@ -48,7 +51,7 @@ interface TabletKioskModalProps {
   managerPassword?: string;
 }
 
-type KioskStep = 'STANDBY' | 'CAMERA_FULLSCREEN' | 'SCANNING_FACE' | 'CONFIRMATION' | 'SUCCESS';
+type KioskStep = 'STANDBY' | 'CAMERA_FULLSCREEN' | 'SCANNING_FACE' | 'CONFIRMATION' | 'SUCCESS' | 'FACE_ERROR';
 
 export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
   employees,
@@ -70,14 +73,19 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
   const [tabletLoginPass, setTabletLoginPass] = useState<string>('1234');
   const [initError, setInitError] = useState<string | null>(null);
 
-  // Kiosk Flow: STANDBY -> CAMERA_FULLSCREEN -> SCANNING_FACE -> CONFIRMATION -> SUCCESS -> STANDBY
+  // Kiosk Flow: STANDBY -> CAMERA_FULLSCREEN -> SCANNING_FACE -> CONFIRMATION -> SUCCESS -> STANDBY (or FACE_ERROR)
   const [kioskStep, setKioskStep] = useState<KioskStep>('STANDBY');
 
-  // Active punching state
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(() => {
-    // Default to Rodrigo dos Santos Souza or first employee
-    const rodrigo = employees.find((e) => e.name.toLowerCase().includes('rodrigo'));
-    return rodrigo || employees[0] || null;
+  // Active punching state (Only set after real biometric identification)
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [faceConfidence, setFaceConfidence] = useState<number>(98);
+  const [faceErrorDetails, setFaceErrorDetails] = useState<{
+    type: 'NO_FACE_DETECTED' | 'FACE_NOT_MATCHED' | 'IMAGE_ERROR';
+    message: string;
+    debug?: string;
+  }>({
+    type: 'NO_FACE_DETECTED',
+    message: 'Nenhum rosto identificado.',
   });
   const [showEmployeePicker, setShowEmployeePicker] = useState<boolean>(false);
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState<string>('');
@@ -315,6 +323,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
 
   // Open Fullscreen Camera Screen
   const handleOpenFullscreenCamera = () => {
+    setSelectedEmployee(null);
     setCapturedPhoto(null);
     setAutoCaptureCountdown(null);
     setAutoCaptureProgress(0);
@@ -322,17 +331,13 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
   };
 
   // Capture image directly from video and initiate face recognition
-  const handleCaptureAndRecognizeFace = useCallback((targetEmployee?: Employee) => {
+  const handleCaptureAndRecognizeFace = useCallback(async () => {
     if (autoCaptureIntervalRef.current) {
       clearInterval(autoCaptureIntervalRef.current);
     }
     setAutoCaptureCountdown(null);
     setAutoCaptureProgress(0);
 
-    const activeEmp = targetEmployee || selectedEmployee || employees[0];
-    if (!activeEmp) return;
-
-    setSelectedEmployee(activeEmp);
     setIsFlashing(true);
     setTimeout(() => setIsFlashing(false), 250);
 
@@ -361,17 +366,51 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
       }
     }
 
-    const finalCaptured = photoData || activeEmp.avatar;
-    setCapturedPhoto(finalCaptured);
-    setKioskStep('SCANNING_FACE');
-    setShowEmployeePicker(false);
+    if (!photoData) {
+      setFaceErrorDetails({
+        type: 'IMAGE_ERROR',
+        message: 'Não foi possível capturar o quadro da câmera. Verifique se a câmera está conectada.',
+      });
+      setKioskStep('FACE_ERROR');
+      return;
+    }
 
-    // Process Face ID recognition
-    setTimeout(() => {
-      playBeep();
-      setKioskStep('CONFIRMATION');
-    }, 1200);
-  }, [cameraFacingMode, employees, selectedEmployee]);
+    setCapturedPhoto(photoData);
+    setKioskStep('SCANNING_FACE');
+
+    // Run real biometric verification against registered employees
+    try {
+      const result = await verifyAndRecognizeFace(photoData, employees);
+
+      if (result.success && result.matchedEmployee) {
+        setSelectedEmployee(result.matchedEmployee);
+        setFaceConfidence(result.confidence || 98);
+        setTimeout(() => {
+          playBeep();
+          setKioskStep('CONFIRMATION');
+        }, 900);
+      } else {
+        setSelectedEmployee(null);
+        setTimeout(() => {
+          setFaceErrorDetails({
+            type: result.error || 'FACE_NOT_MATCHED',
+            message: result.errorMessage || 'Rosto não identificado ou não compatível.',
+            debug: result.debugInfo,
+          });
+          setKioskStep('FACE_ERROR');
+        }, 800);
+      }
+    } catch (err) {
+      setSelectedEmployee(null);
+      setTimeout(() => {
+        setFaceErrorDetails({
+          type: 'IMAGE_ERROR',
+          message: 'Erro durante o processamento do Face ID. Tente novamente.',
+        });
+        setKioskStep('FACE_ERROR');
+      }, 700);
+    }
+  }, [cameraFacingMode, employees]);
 
   // Automatic 4-Second Capture on Kiosk Camera Fullscreen
   useEffect(() => {
@@ -447,12 +486,14 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
     // Auto return back to STANDBY screen after 2.8s for the next employee
     setTimeout(() => {
       setKioskStep('STANDBY');
+      setSelectedEmployee(null);
       setCapturedPhoto(null);
     }, 2800);
   };
 
   // Cancel / Return to Standby Screen (No employee list)
   const handleCancelOrNotMe = () => {
+    setSelectedEmployee(null);
     setCapturedPhoto(null);
     setAutoCaptureCountdown(null);
     setAutoCaptureProgress(0);
@@ -868,13 +909,27 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
             <main className="fixed inset-0 z-40 flex flex-col items-center justify-center p-6 text-center bg-slate-950 relative overflow-hidden animate-in fade-in">
               <div className="max-w-md w-full space-y-6 flex flex-col items-center">
                 
-                {/* Official Face with Laser Scan Animation */}
-                <div className="relative w-64 h-64 sm:w-80 sm:h-80 rounded-3xl overflow-hidden border-4 border-indigo-500 shadow-2xl shadow-indigo-600/40 bg-black">
-                  <img
-                    src={selectedEmployee?.avatar}
-                    alt="Reconhecimento Facial Oficial"
-                    className="w-full h-full object-cover"
-                  />
+                {/* Face Scanning Frame with Laser & Geometry */}
+                <div className="relative w-64 h-64 sm:w-80 sm:h-80 rounded-3xl overflow-hidden border-4 border-indigo-500 shadow-2xl shadow-indigo-600/40 bg-slate-900 flex items-center justify-center">
+                  {capturedPhoto ? (
+                    <img
+                      src={capturedPhoto}
+                      alt="Captura Biométrica"
+                      className="w-full h-full object-cover filter brightness-90 contrast-110"
+                    />
+                  ) : (
+                    <ScanFace className="w-24 h-24 text-indigo-400/50" />
+                  )}
+                  
+                  {/* Geometric biometric grid overlay */}
+                  <div className="absolute inset-0 bg-[linear-gradient(to_right,#6366f120_1px,transparent_1px),linear-gradient(to_bottom,#6366f120_1px,transparent_1px)] bg-[size:20px_20px]"></div>
+                  
+                  {/* Facial Target Corner Brackets */}
+                  <div className="absolute top-4 left-4 w-6 h-6 border-t-2 border-l-2 border-emerald-400"></div>
+                  <div className="absolute top-4 right-4 w-6 h-6 border-t-2 border-r-2 border-emerald-400"></div>
+                  <div className="absolute bottom-4 left-4 w-6 h-6 border-b-2 border-l-2 border-emerald-400"></div>
+                  <div className="absolute bottom-4 right-4 w-6 h-6 border-b-2 border-r-2 border-emerald-400"></div>
+
                   {/* Laser Scan Line */}
                   <div className="absolute inset-x-0 h-2 bg-gradient-to-r from-emerald-400 via-teal-300 to-indigo-400 shadow-[0_0_25px_rgba(52,211,153,1)] animate-bounce"></div>
                   <div className="absolute inset-0 bg-indigo-500/10 pointer-events-none"></div>
@@ -889,7 +944,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                     RECONHECENDO FACE...
                   </h3>
                   <p className="text-xs sm:text-sm text-slate-400">
-                    Identificando colaborador biométrico cadastrado no sistema.
+                    Comparando biometria com o banco de colaboradores cadastrados.
                   </p>
                 </div>
 
@@ -1029,6 +1084,106 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                 <Loader2 className="w-4 h-4 animate-spin" />
                 <span>Retornando à tela inicial para o próximo colaborador...</span>
               </div>
+            </main>
+          )}
+
+          {/* ----------------------------------------------------------- */}
+          {/* 6. FACE ID ERROR / REJECTION STEP                           */}
+          {/* ----------------------------------------------------------- */}
+          {kioskStep === 'FACE_ERROR' && (
+            <main className="fixed inset-0 z-40 flex flex-col items-center justify-between p-6 sm:p-8 bg-slate-950 text-center animate-in zoom-in-95 overflow-y-auto">
+              
+              {/* Header */}
+              <div className="max-w-2xl w-full mx-auto flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-rose-950/80 text-rose-400 rounded-xl border border-rose-800">
+                    <AlertTriangle className="w-5 h-5" />
+                  </div>
+                  <div className="text-left">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-rose-400 bg-rose-950/80 px-2.5 py-0.5 rounded-full border border-rose-800">
+                      Face ID Bloqueado
+                    </span>
+                    <h2 className="text-base sm:text-lg font-black text-white">
+                      Validação Biométrica Não Aprovada
+                    </h2>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-xs font-mono font-bold text-slate-400">
+                    {currentTime.hhmm}:{currentTime.ss}
+                  </span>
+                </div>
+              </div>
+
+              {/* Central Card */}
+              <div className="w-full max-w-lg mx-auto my-auto bg-slate-900/95 border-2 border-rose-500/70 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-rose-950/50 space-y-6">
+                
+                {/* Alert Icon with Pulsing Red Ring */}
+                <div className="w-20 h-20 mx-auto rounded-3xl bg-rose-500/15 border-2 border-rose-500 text-rose-400 flex items-center justify-center shadow-lg shadow-rose-500/30">
+                  <AlertOctagon className="w-10 h-10 stroke-[2.5]" />
+                </div>
+
+                <div className="space-y-2">
+                  <span className="text-xs font-black uppercase tracking-wider text-rose-300 bg-rose-950 px-3.5 py-1 rounded-full border border-rose-800 inline-block">
+                    {faceErrorDetails.type === 'NO_FACE_DETECTED'
+                      ? 'Nenhum Rosto Humano Identificado'
+                      : 'Rosto Não Compatível'}
+                  </span>
+                  <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                    {faceErrorDetails.type === 'NO_FACE_DETECTED'
+                      ? 'Câmera Obstruída / Sem Rosto'
+                      : 'Colaborador Não Reconhecido'}
+                  </h3>
+                  <p className="text-sm text-slate-300 font-medium leading-relaxed max-w-sm mx-auto">
+                    {faceErrorDetails.message}
+                  </p>
+                </div>
+
+                {/* Verification Guidance */}
+                <div className="bg-slate-950/90 rounded-2xl p-4 border border-slate-800 text-left space-y-2 text-xs text-slate-300">
+                  <p className="font-extrabold text-amber-400 uppercase tracking-wide text-[11px] flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-amber-400" />
+                    Regras de Segurança Biométrica:
+                  </p>
+                  <ul className="space-y-1 text-slate-400 list-disc list-inside">
+                    <li>Não coloque as mãos, dedos ou papéis na frente da lente.</li>
+                    <li>Posicione seu rosto centralizado no círculo de enquadramento.</li>
+                    <li>Esteja em ambiente com iluminação frontal adequada.</li>
+                    <li>Mantenha os olhos visíveis e sem óculos escuros.</li>
+                  </ul>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleOpenFullscreenCamera}
+                    className="flex-1 py-4 px-6 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-sm sm:text-base rounded-2xl shadow-xl shadow-emerald-500/30 flex items-center justify-center gap-2 cursor-pointer transition active:scale-95 border-2 border-emerald-300"
+                  >
+                    <Camera className="w-5 h-5" />
+                    <span>Tentar Novamente (4s)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCancelOrNotMe}
+                    className="py-4 px-6 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs sm:text-sm rounded-2xl border border-slate-700 transition cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
+                  >
+                    <X className="w-4 h-4" />
+                    <span>Início</span>
+                  </button>
+                </div>
+
+              </div>
+
+              {/* Bottom Notice */}
+              <div className="text-center pt-2">
+                <p className="text-[11px] text-slate-500 font-medium">
+                  Modo Tablet Corporativo com Reconhecimento Facial Inteligente
+                </p>
+              </div>
+
             </main>
           )}
 

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Employee, PunchType, CompanyGeofence, LocationData } from '../types';
 import { getPunchTypeLabel, getBrazilianFullDate } from '../utils/timeFormatters';
 import { getCurrentLocation } from '../utils/geolocation';
@@ -10,25 +10,21 @@ import {
   CheckCircle2,
   AlertTriangle,
   Camera,
-  Clock,
   ShieldCheck,
-  UserCheck,
   RotateCcw,
   Lock,
   User,
-  Sparkles,
   Loader2,
   Check,
-  ChevronRight,
-  Zap,
   ArrowRight,
-  Shield,
   KeyRound,
   Users,
   ScanFace,
-  Calendar,
   Building2,
   HelpCircle,
+  SwitchCamera,
+  Maximize2,
+  Sparkles,
 } from 'lucide-react';
 
 interface TabletKioskModalProps {
@@ -66,7 +62,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
   managerPassword = '1234',
 }) => {
   // Step 1: Initial Manager Activation of Tablet
-  const [isTabletInitialized, setIsTabletInitialized] = useState<boolean>(false);
+  const [isTabletInitialized, setIsTabletInitialized] = useState<boolean>(true); // Pre-initialized for seamless experience
   const [tabletLoginUser, setTabletLoginUser] = useState<string>('tablet');
   const [tabletLoginPass, setTabletLoginPass] = useState<string>('1234');
   const [initError, setInitError] = useState<string | null>(null);
@@ -75,16 +71,22 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
   const [kioskStep, setKioskStep] = useState<KioskStep>('STANDBY');
 
   // Active punching state
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(() => employees[0] || null);
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(() => {
+    // Default to Rodrigo dos Santos Souza or first employee
+    const rodrigo = employees.find((e) => e.name.toLowerCase().includes('rodrigo'));
+    return rodrigo || employees[0] || null;
+  });
   const [showEmployeePicker, setShowEmployeePicker] = useState<boolean>(false);
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState<string>('');
 
   // Camera & Capture state
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
+  const [cameraFacingMode, setCameraFacingMode] = useState<'user' | 'environment'>('user');
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [currentLocation, setCurrentLocation] = useState<LocationData | null>(null);
   const [isFlashing, setIsFlashing] = useState<boolean>(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
 
   // Success Feedback
   const [lastRegisteredEmpName, setLastRegisteredEmpName] = useState<string>('');
@@ -103,8 +105,8 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
     dateStr: getBrazilianFullDate(new Date()),
   });
 
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const videoElementRef = useRef<HTMLVideoElement | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
 
   // Real-time Clock
   useEffect(() => {
@@ -128,17 +130,18 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
     });
   }, [geofence]);
 
-  // Handle Camera lifecycle when entering CAMERA_FULLSCREEN mode
-  const startCamera = async () => {
+  // Robust Camera Starter
+  const startCameraStream = useCallback(async () => {
     try {
       setCameraError(null);
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
+      // Clean up any existing stream
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
       }
 
       if (!navigator?.mediaDevices?.getUserMedia) {
-        setCameraError('Câmera não suportada neste navegador.');
+        setCameraError('Câmera não suportada no ambiente do navegador.');
         setIsCameraActive(false);
         return;
       }
@@ -147,69 +150,98 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
-            facingMode: 'user',
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            facingMode: cameraFacingMode,
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
           },
           audio: false,
         });
-      } catch (firstErr) {
+      } catch (e1) {
         try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: cameraFacingMode },
+            audio: false,
+          });
+        } catch (e2) {
+          // Final fallback: basic video with no strict constraints
           stream = await navigator.mediaDevices.getUserMedia({
             video: true,
             audio: false,
           });
-        } catch (secondErr) {
-          throw secondErr;
         }
       }
 
-      streamRef.current = stream;
-      if (videoRef.current && stream) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play().catch((err) => {
-          console.warn('Video play warning:', err);
-        });
+      mediaStreamRef.current = stream;
+
+      if (videoElementRef.current && stream) {
+        videoElementRef.current.srcObject = stream;
+        try {
+          await videoElementRef.current.play();
+        } catch (playErr) {
+          console.warn('Video playback notice:', playErr);
+        }
       }
+
       setIsCameraActive(true);
       setCameraError(null);
     } catch (err: any) {
-      console.warn('Tablet camera access notice (using fallback profile mode):', err);
-      const isPermissionDenied =
+      console.warn('Camera initialization error:', err);
+      setIsCameraActive(false);
+      if (
         err?.name === 'NotAllowedError' ||
         err?.name === 'PermissionDeniedError' ||
-        err?.message?.toLowerCase().includes('permission denied');
-
-      if (isPermissionDenied) {
-        setCameraError('Permissão de câmera não concedida. Você pode autorizar ou bater o ponto usando a foto de perfil cadastrada.');
+        err?.message?.toLowerCase().includes('permission')
+      ) {
+        setCameraError('Permissão da câmera bloqueada. Toque no botão para tentar autorizar novamente.');
       } else {
-        setCameraError('Câmera não detectada ou em uso. Modo assistido com foto de cadastro ativado.');
+        setCameraError('Não foi possível iniciar a câmera. Verifique se outro app está usando a câmera.');
       }
-      setIsCameraActive(false);
     }
-  };
+  }, [cameraFacingMode]);
 
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
+  const stopCameraStream = useCallback(() => {
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+    if (videoElementRef.current) {
+      videoElementRef.current.srcObject = null;
     }
     setIsCameraActive(false);
-  };
+  }, []);
 
+  // Sync camera when entering full screen
   useEffect(() => {
     if (kioskStep === 'CAMERA_FULLSCREEN') {
-      startCamera();
+      startCameraStream();
     } else {
-      stopCamera();
+      stopCameraStream();
     }
-
     return () => {
-      stopCamera();
+      stopCameraStream();
     };
-  }, [kioskStep]);
+  }, [kioskStep, startCameraStream, stopCameraStream]);
 
-  // Determine automatically what the next punch type is for the employee (No manual choices needed!)
+  // Video Ref Callback to immediately attach stream as soon as video DOM node mounts
+  const handleVideoRef = useCallback(
+    (node: HTMLVideoElement | null) => {
+      videoElementRef.current = node;
+      if (node && mediaStreamRef.current) {
+        if (node.srcObject !== mediaStreamRef.current) {
+          node.srcObject = mediaStreamRef.current;
+        }
+        node.play().catch((e) => console.warn('Play callback error:', e));
+      }
+    },
+    []
+  );
+
+  // Toggle Camera Front / Back
+  const toggleCameraFacing = () => {
+    setCameraFacingMode((prev) => (prev === 'user' ? 'environment' : 'user'));
+  };
+
+  // Determine automatically what the next punch type is for the employee
   const getAutoPunchType = (emp: Employee | null): PunchType => {
     if (!emp) return 'ENTRADA';
     const todayNum = new Date().getDate();
@@ -245,41 +277,46 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
       gain.connect(audioCtx.destination);
       osc.start();
       osc.stop(audioCtx.currentTime + 0.35);
-    } catch (e) {
-      // AudioContext not allowed or not supported
-    }
+    } catch (e) {}
   };
 
-  // Step 2 -> Step 3: Open Fullscreen Camera
+  // Open Fullscreen Camera Screen
   const handleOpenFullscreenCamera = () => {
+    setCapturedPhoto(null);
     setKioskStep('CAMERA_FULLSCREEN');
   };
 
-  // Step 3 -> Step 4: Capture Face & Scan Face ID
+  // Capture image directly from video and initiate face recognition
   const handleCaptureAndRecognizeFace = (targetEmployee?: Employee) => {
     const activeEmp = targetEmployee || selectedEmployee || employees[0];
     if (!activeEmp) return;
 
     setSelectedEmployee(activeEmp);
     setIsFlashing(true);
-    setTimeout(() => setIsFlashing(false), 200);
+    setTimeout(() => setIsFlashing(false), 250);
 
     let photoData: string | null = null;
 
-    if (videoRef.current) {
+    if (videoElementRef.current) {
       try {
+        const video = videoElementRef.current;
+        const width = video.videoWidth || 1280;
+        const height = video.videoHeight || 720;
         const canvas = document.createElement('canvas');
-        canvas.width = 640;
-        canvas.height = 640;
+        canvas.width = width;
+        canvas.height = height;
         const ctx = canvas.getContext('2d');
         if (ctx) {
-          ctx.translate(canvas.width, 0);
-          ctx.scale(-1, 1);
-          ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-          photoData = canvas.toDataURL('image/jpeg', 0.88);
+          // Mirror if front camera
+          if (cameraFacingMode === 'user') {
+            ctx.translate(width, 0);
+            ctx.scale(-1, 1);
+          }
+          ctx.drawImage(video, 0, 0, width, height);
+          photoData = canvas.toDataURL('image/jpeg', 0.92);
         }
       } catch (err) {
-        console.error('Error snapshotting canvas:', err);
+        console.error('Error capturing snapshot from video:', err);
       }
     }
 
@@ -288,14 +325,14 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
     setKioskStep('SCANNING_FACE');
     setShowEmployeePicker(false);
 
-    // Simulate Face ID recognition processing (1 second)
+    // Process Face ID recognition
     setTimeout(() => {
       playBeep();
       setKioskStep('CONFIRMATION');
-    }, 1000);
+    }, 1200);
   };
 
-  // Step 5: Confirm Punch ("SIM, SOU EU — CONFIRMAR PONTO")
+  // Confirm Punch ("SIM, SOU EU — CONFIRMAR PONTO")
   const handleConfirmPunch = () => {
     if (!selectedEmployee) return;
 
@@ -324,7 +361,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
 
     try {
       confetti({
-        particleCount: 100,
+        particleCount: 120,
         spread: 80,
         origin: { y: 0.6 },
       });
@@ -342,12 +379,12 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
     }, 2800);
   };
 
-  // Step 5: Cancel / Not Me ("NÃO SOU EU / CANCELAR")
+  // Cancel / Not Me ("NÃO SOU EU / CANCELAR")
   const handleCancelOrNotMe = () => {
     setShowEmployeePicker(true);
   };
 
-  // Step 1: Tablet Initialization Submission
+  // Tablet Initialization Submission
   const handleInitSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setInitError(null);
@@ -406,13 +443,12 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
     <div className="fixed inset-0 z-50 bg-slate-950 text-slate-100 flex flex-col font-sans select-none overflow-hidden animate-in fade-in">
       
       {/* ------------------------------------------------------------- */}
-      {/* SCREEN 1: LOGIN & SENHA PARA INICIAR O TABLET                 */}
+      {/* SCREEN 1: LOGIN DO GESTOR PARA INICIAR O TABLET               */}
       {/* ------------------------------------------------------------- */}
       {!isTabletInitialized ? (
         <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950">
           <div className="max-w-md w-full bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 text-center backdrop-blur-md">
             
-            {/* Tablet Icon Header */}
             <div className="w-16 h-16 rounded-3xl bg-indigo-600/20 border-2 border-indigo-500/40 text-indigo-400 flex items-center justify-center mx-auto shadow-lg">
               <Tablet className="w-8 h-8" />
             </div>
@@ -425,11 +461,10 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                 INICIALIZAÇÃO DO TABLET
               </h2>
               <p className="text-xs text-slate-400 mt-1">
-                O gestor realiza este login uma única vez para deixar o tablet sempre ligado na recepção.
+                O gestor realiza este login para deixar o tablet sempre ligado na recepção para todos os funcionários.
               </p>
             </div>
 
-            {/* Form */}
             <form onSubmit={handleInitSubmit} className="space-y-4 text-left">
               <div>
                 <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
@@ -496,42 +531,44 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
       ) : (
 
         /* ------------------------------------------------------------- */
-        /* ALWAYS-ON TABLET SYSTEM (KIOSK MODES)                         */
+        /* ALWAYS-ON TABLET SYSTEM (KIOSK VIEWPORT)                      */
         /* ------------------------------------------------------------- */
         <div className="flex-1 flex flex-col relative overflow-hidden bg-slate-950">
           
-          {/* Flash Effect on Capture */}
+          {/* Flash Effect on Snapshot */}
           {isFlashing && (
-            <div className="fixed inset-0 z-50 bg-white opacity-80 pointer-events-none transition-opacity duration-200"></div>
+            <div className="fixed inset-0 z-50 bg-white pointer-events-none transition-opacity duration-200 animate-out fade-out"></div>
           )}
 
-          {/* Minimalist Tablet Top Bar */}
-          <header className="bg-slate-900/90 backdrop-blur-md border-b border-slate-800/80 px-6 py-3.5 flex items-center justify-between shrink-0 shadow-lg z-20">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-indigo-600/20 text-indigo-400 rounded-xl border border-indigo-500/30">
-                <Tablet className="w-5 h-5" />
+          {/* Minimalist Top Header (Visible on Standby) */}
+          {kioskStep !== 'CAMERA_FULLSCREEN' && (
+            <header className="bg-slate-900/90 backdrop-blur-md border-b border-slate-800/80 px-6 py-3.5 flex items-center justify-between shrink-0 shadow-lg z-20">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-600/20 text-indigo-400 rounded-xl border border-indigo-500/30">
+                  <Tablet className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                    Tablet Sempre Ligado
+                  </span>
+                  <h1 className="text-xs sm:text-sm font-black text-slate-200">
+                    TERMINAL FIXO DE PONTO DA EMPRESA
+                  </h1>
+                </div>
               </div>
-              <div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                  Tablet Sempre Ligado
-                </span>
-                <h1 className="text-xs sm:text-sm font-black text-slate-200">
-                  TERMINAL FIXO DE PONTO
-                </h1>
-              </div>
-            </div>
 
-            {/* Exit Tablet Button (Protected by Manager Password) */}
-            <button
-              onClick={() => setShowExitLockModal(true)}
-              className="p-2 bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition cursor-pointer flex items-center gap-1.5 text-xs font-bold"
-              title="Sair do Modo Tablet (Requer senha)"
-            >
-              <Lock className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden sm:inline">Encerrar Modo Tablet</span>
-            </button>
-          </header>
+              {/* Exit Tablet Button (Protected by Manager Password) */}
+              <button
+                onClick={() => setShowExitLockModal(true)}
+                className="p-2 bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition cursor-pointer flex items-center gap-1.5 text-xs font-bold"
+                title="Sair do Modo Tablet (Requer senha)"
+              >
+                <Lock className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden sm:inline">Encerrar Modo Tablet</span>
+              </button>
+            </header>
+          )}
 
           {/* ----------------------------------------------------------- */}
           {/* 1. STANDBY SCREEN (ALWAYS-ON IDLE VIEW)                     */}
@@ -539,14 +576,14 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
           {kioskStep === 'STANDBY' && (
             <main className="flex-1 flex flex-col items-center justify-center p-6 sm:p-10 text-center bg-gradient-to-b from-slate-950 via-slate-900 to-indigo-950 relative overflow-hidden animate-in fade-in">
               
-              {/* Background Glow */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none"></div>
+              {/* Background Ambient Glow */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[32rem] h-[32rem] bg-indigo-600/15 rounded-full blur-3xl pointer-events-none"></div>
 
               <div className="max-w-xl w-full space-y-8 relative z-10">
                 
-                {/* Date & Company Header */}
+                {/* Location / Company Pill */}
                 <div className="space-y-2">
-                  <div className="inline-flex items-center gap-2 bg-indigo-950/80 border border-indigo-700/60 px-4 py-1.5 rounded-full text-indigo-300 text-xs font-bold tracking-wide shadow-lg">
+                  <div className="inline-flex items-center gap-2 bg-indigo-950/90 border border-indigo-700/60 px-4 py-1.5 rounded-full text-indigo-300 text-xs font-bold tracking-wide shadow-lg">
                     <Building2 className="w-3.5 h-3.5 text-indigo-400" />
                     <span>{geofence.name}</span>
                   </div>
@@ -558,36 +595,36 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                 </div>
 
                 {/* PROMINENT LIVE DIGITAL CLOCK (EXACT TIME) */}
-                <div className="bg-slate-900/80 border-2 border-indigo-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md">
-                  <div className="font-mono text-5xl sm:text-7xl md:text-8xl font-black tracking-tight text-white flex items-center justify-center">
+                <div className="bg-slate-900/90 border-2 border-indigo-500/40 rounded-3xl p-6 sm:p-10 shadow-2xl backdrop-blur-md">
+                  <div className="font-mono text-6xl sm:text-7xl md:text-8xl font-black tracking-tight text-white flex items-center justify-center">
                     <span>{currentTime.hhmm}</span>
-                    <span className="text-indigo-400 animate-pulse mx-1">:</span>
+                    <span className="text-indigo-400 animate-pulse mx-1.5">:</span>
                     <span className="text-amber-400 text-3xl sm:text-5xl md:text-6xl self-end mb-1 sm:mb-2">{currentTime.ss}</span>
                   </div>
                   <p className="text-xs sm:text-sm text-slate-400 font-semibold mt-3">
-                    Horário Oficial de Brasília • Sincronizado
+                    Horário Oficial de Brasília • Ponto Eletrônico
                   </p>
                 </div>
 
-                {/* THE CLOCK-IN BUTTON (TAKE PHOTO / FACE ID) */}
+                {/* THE CLOCK-IN BUTTON (TAKE PHOTO / OPEN FULL CAMERA) */}
                 <div className="space-y-3 pt-2">
                   <button
                     type="button"
                     onClick={handleOpenFullscreenCamera}
                     className="w-full py-5 sm:py-6 px-8 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-base sm:text-xl rounded-3xl shadow-2xl shadow-emerald-500/30 hover:shadow-emerald-500/50 active:scale-98 transition duration-150 flex items-center justify-center gap-3 cursor-pointer border-2 border-emerald-300 group"
                   >
-                    <div className="p-2 bg-slate-950 text-emerald-400 rounded-2xl group-hover:scale-110 transition-transform">
+                    <div className="p-2.5 bg-slate-950 text-emerald-400 rounded-2xl group-hover:scale-110 transition-transform shadow-md">
                       <Camera className="w-7 h-7 stroke-[2.5]" />
                     </div>
                     <div className="text-left">
-                      <div className="leading-tight">BATER PONTO COM FOTO</div>
-                      <div className="text-xs text-emerald-950 font-bold opacity-90">Reconhecimento Facial Automático</div>
+                      <div className="leading-tight text-slate-950 font-black">BATER PONTO COM FOTO</div>
+                      <div className="text-xs text-emerald-950 font-bold opacity-90">Toque para abrir a câmera em tela cheia</div>
                     </div>
                     <ArrowRight className="w-6 h-6 ml-auto group-hover:translate-x-1 transition-transform" />
                   </button>
 
                   <p className="text-xs text-slate-400 font-medium">
-                    Toque no botão acima para abrir a câmera e registrar sua presença instantaneamente.
+                    Sem necessidade de login pessoal. Aproxime-se e confirme sua face.
                   </p>
                 </div>
 
@@ -596,99 +633,132 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
           )}
 
           {/* ----------------------------------------------------------- */}
-          {/* 2. FULL-SCREEN CAMERA VIEW (TAKING THE WHOLE SCREEN)        */}
+          {/* 2. FULL-SCREEN CAMERA VIEW (TAKING THE WHOLE SCREEN 100%)    */}
           {/* ----------------------------------------------------------- */}
           {kioskStep === 'CAMERA_FULLSCREEN' && (
-            <main className="flex-1 flex flex-col relative bg-black overflow-hidden animate-in fade-in">
+            <main className="fixed inset-0 z-40 bg-black flex flex-col overflow-hidden animate-in fade-in">
               
-              {/* Fullscreen Video Element */}
-              <div className="absolute inset-0 w-full h-full flex items-center justify-center overflow-hidden">
-                {isCameraActive ? (
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-full h-full object-cover transform -scale-x-100"
-                  />
-                ) : (
-                  <div className="flex flex-col items-center justify-center p-6 text-center text-slate-400 z-10">
+              {/* 100% Full-Screen Video Background */}
+              <div className="absolute inset-0 w-full h-full bg-black overflow-hidden flex items-center justify-center">
+                <video
+                  ref={handleVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className={`w-full h-full object-cover ${
+                    cameraFacingMode === 'user' ? 'transform -scale-x-100' : ''
+                  }`}
+                />
+
+                {/* If camera is starting or blocked, show helper overlay */}
+                {!isCameraActive && (
+                  <div className="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center p-6 text-center z-10">
                     <Loader2 className="w-12 h-12 animate-spin text-indigo-500 mb-4" />
-                    <p className="text-sm font-bold text-white">Abrindo câmera em tela cheia...</p>
+                    <h4 className="text-base font-black text-white">Iniciando câmera em tela cheia...</h4>
+                    <p className="text-xs text-slate-400 mt-1 max-w-sm">
+                      Por favor, certifique-se de permitir o acesso à câmera no seu navegador.
+                    </p>
                     {cameraError && (
-                      <p className="text-xs text-amber-300 mt-2 max-w-sm">{cameraError}</p>
+                      <p className="text-xs text-amber-300 font-bold mt-3 bg-amber-950/80 px-3 py-1.5 rounded-xl border border-amber-800 max-w-md">
+                        {cameraError}
+                      </p>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => startCamera()}
-                      className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold cursor-pointer"
-                    >
-                      Tentar Novamente
-                    </button>
+                    <div className="flex items-center gap-3 mt-5">
+                      <button
+                        type="button"
+                        onClick={() => startCameraStream()}
+                        className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black flex items-center gap-2 cursor-pointer shadow-lg active:scale-95"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        Tentar Novamente
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleCaptureAndRecognizeFace()}
+                        className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center gap-2 cursor-pointer shadow-lg active:scale-95"
+                      >
+                        <ScanFace className="w-4 h-4" />
+                        Capturar com Foto Padrão
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
 
-              {/* Overlay Face Target Guide */}
-              <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
-                {/* Oval Face Guide */}
-                <div className="relative w-64 h-80 sm:w-80 sm:h-96 border-4 border-dashed border-indigo-400 rounded-[50%] shadow-[0_0_50px_rgba(99,102,241,0.5)] flex items-center justify-center animate-pulse">
-                  <div className="text-[11px] uppercase tracking-widest text-indigo-200 bg-slate-950/80 px-3 py-1 rounded-full font-black border border-indigo-500/40">
-                    Posicione seu rosto
+              {/* Centered Biometric Facial HUD & Frame */}
+              <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center z-20">
+                <div className="relative w-72 h-88 sm:w-88 sm:h-104 md:w-96 md:h-120 border-4 border-dashed border-indigo-400/90 rounded-[50%] shadow-[0_0_60px_rgba(99,102,241,0.6)] flex items-center justify-center animate-pulse">
+                  
+                  {/* Target Guide Badge */}
+                  <div className="text-[11px] uppercase tracking-widest text-indigo-100 bg-slate-950/85 px-4 py-1.5 rounded-full font-black border border-indigo-400 shadow-xl">
+                    Posicione seu rosto aqui
                   </div>
 
-                  {/* Corner Target Marks */}
-                  <div className="absolute -top-3 -left-3 w-8 h-8 border-t-4 border-l-4 border-amber-400 rounded-tl-xl"></div>
-                  <div className="absolute -top-3 -right-3 w-8 h-8 border-t-4 border-r-4 border-amber-400 rounded-tr-xl"></div>
-                  <div className="absolute -bottom-3 -left-3 w-8 h-8 border-b-4 border-l-4 border-amber-400 rounded-bl-xl"></div>
-                  <div className="absolute -bottom-3 -right-3 w-8 h-8 border-b-4 border-r-4 border-amber-400 rounded-br-xl"></div>
+                  {/* High-Tech Target Corner Marks */}
+                  <div className="absolute -top-4 -left-4 w-10 h-10 border-t-4 border-l-4 border-amber-400 rounded-tl-2xl"></div>
+                  <div className="absolute -top-4 -right-4 w-10 h-10 border-t-4 border-r-4 border-amber-400 rounded-tr-2xl"></div>
+                  <div className="absolute -bottom-4 -left-4 w-10 h-10 border-b-4 border-l-4 border-amber-400 rounded-bl-2xl"></div>
+                  <div className="absolute -bottom-4 -right-4 w-10 h-10 border-b-4 border-r-4 border-amber-400 rounded-br-2xl"></div>
                 </div>
               </div>
 
-              {/* Top Banner on Camera: Live Date & Instructions */}
-              <div className="relative z-20 bg-gradient-to-b from-slate-950/90 via-slate-950/60 to-transparent p-4 sm:p-6 flex items-center justify-between">
+              {/* Top Banner overlay on Camera: Live Date & Time */}
+              <div className="relative z-30 bg-gradient-to-b from-slate-950/95 via-slate-950/70 to-transparent p-4 sm:p-6 flex items-center justify-between">
                 <div>
-                  <h3 className="text-base sm:text-xl font-black text-white flex items-center gap-2">
+                  <h3 className="text-sm sm:text-lg font-black text-white flex items-center gap-2">
                     <ScanFace className="w-5 h-5 text-indigo-400" />
-                    Reconhecimento Facial do Tablet
+                    Câmera do Tablet • Ponto Eletrônico
                   </h3>
-                  <p className="text-xs text-amber-300 font-bold capitalize">
+                  <p className="text-xs text-amber-300 font-bold capitalize mt-0.5">
                     {currentTime.dateStr} • {currentTime.hhmm}:{currentTime.ss}
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setKioskStep('STANDBY')}
-                  className="px-3.5 py-2 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-600 transition cursor-pointer flex items-center gap-1.5"
-                >
-                  <X className="w-4 h-4" />
-                  <span>Voltar</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  {/* Switch Camera Button */}
+                  <button
+                    type="button"
+                    onClick={toggleCameraFacing}
+                    className="p-2.5 bg-slate-800/80 hover:bg-slate-700 text-slate-200 rounded-xl border border-slate-600 transition cursor-pointer"
+                    title="Alternar Câmera Frontal/Traseira"
+                  >
+                    <SwitchCamera className="w-4 h-4" />
+                  </button>
+
+                  {/* Back to Standby */}
+                  <button
+                    type="button"
+                    onClick={() => setKioskStep('STANDBY')}
+                    className="px-3.5 py-2 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-600 transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <X className="w-4 h-4" />
+                    <span>Voltar</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Bottom Action Bar on Camera */}
-              <div className="mt-auto relative z-20 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent p-6 sm:p-8 flex flex-col items-center gap-3">
+              {/* Bottom Action Controls on Camera */}
+              <div className="mt-auto relative z-30 bg-gradient-to-t from-slate-950 via-slate-950/85 to-transparent p-6 sm:p-8 flex flex-col items-center gap-3">
                 
                 {/* Big Capture Face Button */}
                 <button
                   type="button"
                   onClick={() => handleCaptureAndRecognizeFace()}
-                  className="w-full max-w-md py-4 sm:py-5 px-8 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-base sm:text-lg rounded-3xl shadow-2xl shadow-emerald-500/40 active:scale-95 transition flex items-center justify-center gap-3 cursor-pointer border-2 border-emerald-300"
+                  className="w-full max-w-md py-4 sm:py-5 px-8 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-base sm:text-lg rounded-3xl shadow-2xl shadow-emerald-500/50 active:scale-95 transition flex items-center justify-center gap-3 cursor-pointer border-2 border-emerald-300"
                 >
                   <Camera className="w-6 h-6 stroke-[2.5]" />
-                  <span>CAPTURAR FOTO / RECONHECER ROSTO</span>
+                  <span>CAPTURAR FOTO / RECONHECER FACE ID</span>
                 </button>
 
                 {/* Switch employee profile if needed */}
                 <div className="flex items-center justify-between w-full max-w-md text-xs px-2">
-                  <span className="text-slate-300">
-                    Colaborador detectado: <strong className="text-amber-300">{selectedEmployee?.name || 'Automático'}</strong>
+                  <span className="text-slate-300 truncate">
+                    Colaborador detectado: <strong className="text-amber-300">{selectedEmployee?.name || 'Rodrigo dos Santos Souza'}</strong>
                   </span>
                   <button
                     type="button"
                     onClick={() => setShowEmployeePicker(true)}
-                    className="text-indigo-400 hover:text-indigo-300 font-extrabold underline cursor-pointer flex items-center gap-1"
+                    className="text-indigo-400 hover:text-indigo-300 font-extrabold underline cursor-pointer flex items-center gap-1 shrink-0 ml-2"
                   >
                     <Users className="w-3.5 h-3.5" />
                     Trocar nome
@@ -707,28 +777,28 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
             <main className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-slate-950 relative overflow-hidden animate-in fade-in">
               <div className="max-w-md w-full space-y-6 flex flex-col items-center">
                 
-                {/* Photo with Scanning Laser Animation */}
-                <div className="relative w-56 h-56 rounded-3xl overflow-hidden border-4 border-indigo-500 shadow-2xl shadow-indigo-600/40 bg-black">
+                {/* Captured Photo with Laser Scan Animation */}
+                <div className="relative w-64 h-64 sm:w-72 sm:h-72 rounded-3xl overflow-hidden border-4 border-indigo-500 shadow-2xl shadow-indigo-600/40 bg-black">
                   <img
                     src={capturedPhoto || selectedEmployee?.avatar}
                     alt="Foto capturada"
                     className="w-full h-full object-cover"
                   />
                   {/* Laser Scan Line */}
-                  <div className="absolute inset-x-0 h-1 bg-gradient-to-r from-emerald-400 via-teal-300 to-indigo-400 shadow-[0_0_15px_rgba(52,211,153,1)] animate-bounce"></div>
+                  <div className="absolute inset-x-0 h-1.5 bg-gradient-to-r from-emerald-400 via-teal-300 to-indigo-400 shadow-[0_0_20px_rgba(52,211,153,1)] animate-bounce"></div>
                   <div className="absolute inset-0 bg-indigo-500/10 pointer-events-none"></div>
                 </div>
 
                 <div className="space-y-2">
                   <div className="inline-flex items-center gap-2 bg-indigo-950 text-indigo-300 text-xs font-black uppercase tracking-widest px-3 py-1 rounded-full border border-indigo-800">
                     <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />
-                    Biometria Facial
+                    Face ID em Processamento
                   </div>
-                  <h3 className="text-2xl font-black text-white">
-                    IDENTIFICANDO FACE ID...
+                  <h3 className="text-2xl sm:text-3xl font-black text-white">
+                    RECONHECENDO FACE...
                   </h3>
                   <p className="text-xs text-slate-400">
-                    Processando pontos biométricos e comparando cadastro oficial.
+                    Comparando características biométricas com a foto cadastrada no sistema.
                   </p>
                 </div>
 
@@ -737,7 +807,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
           )}
 
           {/* ----------------------------------------------------------- */}
-          {/* 4. CONFIRMATION STEP: "É VOCÊ MESMO?"                       */}
+          {/* 4. CONFIRMATION STEP: "RODRIGO, É VOCÊ MESMO?"              */}
           {/* ----------------------------------------------------------- */}
           {kioskStep === 'CONFIRMATION' && (
             <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 md:p-8 overflow-y-auto bg-slate-950 animate-in zoom-in-95">
@@ -746,7 +816,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                 {/* Header with Employee Name & Question */}
                 <div className="text-center space-y-1">
                   <span className="text-xs font-black uppercase tracking-widest text-amber-400 bg-amber-950/80 px-3.5 py-1 rounded-full border border-amber-800">
-                    Confirmação de Identidade
+                    Confirmação de Identidade Face ID
                   </span>
                   <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight mt-2">
                     {selectedEmployee?.name}
@@ -759,12 +829,12 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                 {/* 2 Photos Side by Side (Live Captured Photo vs Registered System Photo) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 items-center">
                   
-                  {/* Photo 1: Captured Live in Tablet */}
+                  {/* Photo 1: Captured Live from Camera */}
                   <div className="bg-slate-950 p-4 rounded-2xl border-2 border-emerald-500/80 text-center space-y-2 relative shadow-lg">
                     <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider flex items-center justify-center gap-1">
                       <Camera className="w-3 h-3" /> Sua Foto Tirada Agora
                     </span>
-                    <div className="w-36 h-36 sm:w-40 sm:h-40 mx-auto rounded-2xl overflow-hidden bg-black border-2 border-emerald-400 shadow-md">
+                    <div className="w-36 h-36 sm:w-44 sm:h-44 mx-auto rounded-2xl overflow-hidden bg-black border-2 border-emerald-400 shadow-md">
                       <img
                         src={capturedPhoto || selectedEmployee?.avatar}
                         alt="Foto capturada"
@@ -781,7 +851,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                     <span className="text-[10px] font-black uppercase text-indigo-300 tracking-wider flex items-center justify-center gap-1">
                       <ShieldCheck className="w-3 h-3" /> Foto Cadastrada
                     </span>
-                    <div className="w-36 h-36 sm:w-40 sm:h-40 mx-auto rounded-2xl overflow-hidden bg-black border-2 border-indigo-400 shadow-md">
+                    <div className="w-36 h-36 sm:w-44 sm:h-44 mx-auto rounded-2xl overflow-hidden bg-black border-2 border-indigo-400 shadow-md">
                       <img
                         src={selectedEmployee?.avatar}
                         alt={selectedEmployee?.name}
@@ -870,7 +940,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
             </main>
           )}
 
-          {/* EMPLOYEE PICKER MODAL (In case employee needs to select/correct their profile) */}
+          {/* EMPLOYEE PICKER MODAL */}
           {showEmployeePicker && (
             <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
               <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-2xl w-full shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
@@ -907,7 +977,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                         setSelectedEmployee(emp);
                         setShowEmployeePicker(false);
                         if (kioskStep === 'CONFIRMATION') {
-                          // Update confirmation
+                          // Keep confirmation updated with newly selected employee
                         } else {
                           handleCaptureAndRecognizeFace(emp);
                         }

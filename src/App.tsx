@@ -16,6 +16,7 @@ import { INITIAL_EMPLOYEES } from './data/initialData';
 import { DEFAULT_GEOFENCE, getCurrentLocation } from './utils/geolocation';
 import { calculateDayWorkedMinutes } from './utils/timeFormatters';
 import { getOwnerSettings, saveOwnerSettings } from './utils/ownerStorage';
+import { requestScreenWakeLock, releaseScreenWakeLock } from './utils/wakeLock';
 
 import { Header } from './components/Header';
 import { CalendarStrip } from './components/CalendarStrip';
@@ -61,14 +62,22 @@ export default function App() {
   // Persistence state
   const [employees, setEmployees] = useState<Employee[]>(() => {
     try {
-      const saved = localStorage.getItem('sistema_ponto_funcionarios_v2');
-      if (!saved) return INITIAL_EMPLOYEES;
+      const saved = localStorage.getItem('sistema_ponto_funcionarios_v3');
+      if (!saved) {
+        // Clear previous storage keys to load fresh diverse initial data
+        try {
+          localStorage.removeItem('sistema_ponto_funcionarios_v2');
+          localStorage.removeItem('sistema_ponto_funcionarios');
+        } catch {}
+        return INITIAL_EMPLOYEES;
+      }
       const parsed = JSON.parse(saved);
       if (!Array.isArray(parsed) || parsed.length === 0) return INITIAL_EMPLOYEES;
 
       return parsed.map((emp) => {
         if (!emp.days || !Array.isArray(emp.days) || emp.days.length === 0) {
-          return { ...emp, days: INITIAL_EMPLOYEES[0].days };
+          const defaultEmp = INITIAL_EMPLOYEES.find((e) => e.id === emp.id) || INITIAL_EMPLOYEES[0];
+          return { ...emp, days: defaultEmp.days };
         }
         return emp;
       });
@@ -158,8 +167,41 @@ export default function App() {
   const [cameraPunchType, setCameraPunchType] = useState<PunchType>('ENTRADA');
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
   const [showEspelhoModal, setShowEspelhoModal] = useState<boolean>(false);
-  const [selectedEmpForDetail, setSelectedEmpForDetail] = useState<Employee | null>(null);
   const [showTabletKiosk, setShowTabletKiosk] = useState<boolean>(false);
+
+  // Screen Wake Lock Effect in App.tsx to keep device screen permanently awake when Tablet Kiosk is active
+  useEffect(() => {
+    if (showTabletKiosk) {
+      requestScreenWakeLock();
+
+      const handleVisibilityOrFocus = () => {
+        if (document.visibilityState === 'visible' && showTabletKiosk) {
+          requestScreenWakeLock();
+        }
+      };
+
+      const handleUserTouchOrClick = () => {
+        if (showTabletKiosk) {
+          requestScreenWakeLock();
+        }
+      };
+
+      document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.addEventListener('focus', handleVisibilityOrFocus);
+      window.addEventListener('touchstart', handleUserTouchOrClick, { passive: true });
+      window.addEventListener('click', handleUserTouchOrClick, { passive: true });
+
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+        window.removeEventListener('focus', handleVisibilityOrFocus);
+        window.removeEventListener('touchstart', handleUserTouchOrClick);
+        window.removeEventListener('click', handleUserTouchOrClick);
+        releaseScreenWakeLock();
+      };
+    } else {
+      releaseScreenWakeLock();
+    }
+  }, [showTabletKiosk]);
 
   // Sync days when date changes or on load
   useEffect(() => {
@@ -195,7 +237,7 @@ export default function App() {
 
   // Save changes to localStorage
   useEffect(() => {
-    localStorage.setItem('sistema_ponto_funcionarios_v2', JSON.stringify(employees));
+    localStorage.setItem('sistema_ponto_funcionarios_v3', JSON.stringify(employees));
   }, [employees]);
 
   useEffect(() => {
@@ -635,11 +677,10 @@ export default function App() {
                       selectedDay={selectedDay}
                       onSelectEmployeeForHistory={(emp) => {
                         setCurrentEmpId(emp.id);
-                        setSelectedEmpForDetail(emp);
                         setActiveTab('historico');
                       }}
                       onSelectEmployeeForEspelho={(emp) => {
-                        setSelectedEmpForDetail(emp);
+                        setCurrentEmpId(emp.id);
                         setShowEspelhoModal(true);
                       }}
                     />
@@ -682,12 +723,11 @@ export default function App() {
 
               {activeTab === 'historico' && (
                 <HistoryTab
-                  employee={selectedEmpForDetail || currentEmployee}
+                  employee={currentEmployee}
                   employees={employees}
                   isAdmin={currentUserRole === 'GESTOR' || isAdminView}
                   onSelectEmployee={(emp) => {
                     setCurrentEmpId(emp.id);
-                    setSelectedEmpForDetail(emp);
                   }}
                   onRequestAdjustment={handleRequestAdjustment}
                   onOpenEspelhoPrint={currentUserRole === 'GESTOR' || isAdminView ? () => setShowEspelhoModal(true) : undefined}
@@ -712,7 +752,7 @@ export default function App() {
                   onUpdateEmployee={handleUpdateEmployee}
                   onApprovePunch={() => {}}
                   onSelectEmployeeForDetail={(emp) => {
-                    setSelectedEmpForDetail(emp);
+                    setCurrentEmpId(emp.id);
                     setShowEspelhoModal(true);
                   }}
                   onUpdateEmployeeLunch={handleUpdateEmployeeLunch}
@@ -745,10 +785,9 @@ export default function App() {
         {/* Espelho de Ponto Printable View */}
         {showEspelhoModal && (isAdminView || currentUserRole === 'GESTOR' || currentUserRole === 'PROPRIETARIO') && (
           <EspelhoPontoPrint
-            employee={selectedEmpForDetail || currentEmployee}
+            employee={currentEmployee}
             onClose={() => {
               setShowEspelhoModal(false);
-              setSelectedEmpForDetail(null);
             }}
           />
         )}

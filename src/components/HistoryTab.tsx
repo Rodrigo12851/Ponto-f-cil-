@@ -166,19 +166,21 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
         </div>
       </div>
 
-      {/* Request Manual Adjustment Bar */}
-      <div className="flex items-center justify-between bg-blue-50 border border-blue-200/80 rounded-2xl p-3.5 mb-4">
-        <div>
-          <h4 className="text-xs font-bold text-blue-900">Esqueceu de bater o ponto?</h4>
-          <p className="text-[11px] text-blue-700">Solicite um ajuste manual ao gestor com justificativa.</p>
+      {/* Request Manual Adjustment Bar - Only for Employee mode, NOT for Manager */}
+      {!isAdmin && (
+        <div className="flex items-center justify-between bg-blue-50 border border-blue-200/80 rounded-2xl p-3.5 mb-4">
+          <div>
+            <h4 className="text-xs font-bold text-blue-900">Esqueceu de bater o ponto?</h4>
+            <p className="text-[11px] text-blue-700">Solicite um ajuste manual ao gestor com justificativa.</p>
+          </div>
+          <button
+            onClick={() => setShowAdjustmentModal(true)}
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1 shrink-0 cursor-pointer"
+          >
+            <PlusCircle className="w-3.5 h-3.5" /> Pedir Ajuste
+          </button>
         </div>
-        <button
-          onClick={() => setShowAdjustmentModal(true)}
-          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1 shrink-0 cursor-pointer"
-        >
-          <PlusCircle className="w-3.5 h-3.5" /> Pedir Ajuste
-        </button>
-      </div>
+      )}
 
       {/* Daily List Accordion */}
       <div className="space-y-2">

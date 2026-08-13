@@ -25,6 +25,10 @@ import {
   Shield,
   KeyRound,
   Users,
+  ScanFace,
+  Calendar,
+  Building2,
+  HelpCircle,
 } from 'lucide-react';
 
 interface TabletKioskModalProps {
@@ -45,6 +49,8 @@ interface TabletKioskModalProps {
   managerPassword?: string;
 }
 
+type KioskStep = 'STANDBY' | 'CAMERA_FULLSCREEN' | 'SCANNING_FACE' | 'CONFIRMATION' | 'SUCCESS';
+
 export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
   employees,
   geofence = {
@@ -59,20 +65,20 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
   onClose,
   managerPassword = '1234',
 }) => {
-  // Tablet session initialization state (Password required to start the tablet)
+  // Step 1: Initial Manager Activation of Tablet
   const [isTabletInitialized, setIsTabletInitialized] = useState<boolean>(false);
   const [tabletLoginUser, setTabletLoginUser] = useState<string>('tablet');
   const [tabletLoginPass, setTabletLoginPass] = useState<string>('1234');
   const [initError, setInitError] = useState<string | null>(null);
+
+  // Kiosk Flow: STANDBY -> CAMERA_FULLSCREEN -> SCANNING_FACE -> CONFIRMATION -> SUCCESS -> STANDBY
+  const [kioskStep, setKioskStep] = useState<KioskStep>('STANDBY');
 
   // Active punching state
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(() => employees[0] || null);
   const [showEmployeePicker, setShowEmployeePicker] = useState<boolean>(false);
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState<string>('');
 
-  // Punch step: 'CAMERA' -> 'CONFIRMATION' -> 'SUCCESS'
-  const [punchStep, setPunchStep] = useState<'CAMERA' | 'CONFIRMATION'>('CAMERA');
-  
   // Camera & Capture state
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
@@ -80,13 +86,12 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
   const [currentLocation, setCurrentLocation] = useState<LocationData | null>(null);
   const [isFlashing, setIsFlashing] = useState<boolean>(false);
 
-  // Success Feedback Overlay
-  const [showSuccessOverlay, setShowSuccessOverlay] = useState<boolean>(false);
+  // Success Feedback
   const [lastRegisteredEmpName, setLastRegisteredEmpName] = useState<string>('');
   const [lastRegisteredTypeLabel, setLastRegisteredTypeLabel] = useState<string>('');
   const [lastRegisteredTime, setLastRegisteredTime] = useState<string>('');
 
-  // Manager Exit Lock
+  // Manager Exit Lock Modal
   const [showExitLockModal, setShowExitLockModal] = useState<boolean>(false);
   const [exitPasswordInput, setExitPasswordInput] = useState<string>('');
   const [exitError, setExitError] = useState<string | null>(null);
@@ -123,7 +128,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
     });
   }, [geofence]);
 
-  // Start Camera whenever tablet is initialized and we are in CAMERA mode
+  // Handle Camera lifecycle when entering CAMERA_FULLSCREEN mode
   const startCamera = async () => {
     try {
       setCameraError(null);
@@ -133,14 +138,13 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
       }
 
       if (!navigator?.mediaDevices?.getUserMedia) {
-        setCameraError('Câmera não suportada neste navegador ou ambiente.');
+        setCameraError('Câmera não suportada neste navegador.');
         setIsCameraActive(false);
         return;
       }
 
       let stream: MediaStream | null = null;
       try {
-        // Try front camera with ideal dimensions
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: 'user',
@@ -150,7 +154,6 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
           audio: false,
         });
       } catch (firstErr) {
-        // Fallback to basic video constraint without facingMode or strict dimensions
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: true,
@@ -178,7 +181,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
         err?.message?.toLowerCase().includes('permission denied');
 
       if (isPermissionDenied) {
-        setCameraError('Permissão de câmera não concedida no navegador. Você pode autorizar a câmera ou bater o ponto usando a foto de perfil cadastrada.');
+        setCameraError('Permissão de câmera não concedida. Você pode autorizar ou bater o ponto usando a foto de perfil cadastrada.');
       } else {
         setCameraError('Câmera não detectada ou em uso. Modo assistido com foto de cadastro ativado.');
       }
@@ -186,25 +189,25 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
     }
   };
 
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    setIsCameraActive(false);
+  };
+
   useEffect(() => {
-    if (!isTabletInitialized) {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-      }
-      setIsCameraActive(false);
-      return;
+    if (kioskStep === 'CAMERA_FULLSCREEN') {
+      startCamera();
+    } else {
+      stopCamera();
     }
 
-    startCamera();
-
     return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-      }
+      stopCamera();
     };
-  }, [isTabletInitialized]);
+  }, [kioskStep]);
 
   // Determine automatically what the next punch type is for the employee (No manual choices needed!)
   const getAutoPunchType = (emp: Employee | null): PunchType => {
@@ -247,8 +250,13 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
     }
   };
 
-  // Handle Snapshot / Face capture
-  const handleTakeFacePhotoAndPunch = (targetEmployee?: Employee) => {
+  // Step 2 -> Step 3: Open Fullscreen Camera
+  const handleOpenFullscreenCamera = () => {
+    setKioskStep('CAMERA_FULLSCREEN');
+  };
+
+  // Step 3 -> Step 4: Capture Face & Scan Face ID
+  const handleCaptureAndRecognizeFace = (targetEmployee?: Employee) => {
     const activeEmp = targetEmployee || selectedEmployee || employees[0];
     if (!activeEmp) return;
 
@@ -265,7 +273,6 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
         canvas.height = 640;
         const ctx = canvas.getContext('2d');
         if (ctx) {
-          // Mirror image for realistic selfie feel
           ctx.translate(canvas.width, 0);
           ctx.scale(-1, 1);
           ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
@@ -278,11 +285,17 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
 
     const finalCaptured = photoData || activeEmp.avatar;
     setCapturedPhoto(finalCaptured);
-    setPunchStep('CONFIRMATION');
+    setKioskStep('SCANNING_FACE');
     setShowEmployeePicker(false);
+
+    // Simulate Face ID recognition processing (1 second)
+    setTimeout(() => {
+      playBeep();
+      setKioskStep('CONFIRMATION');
+    }, 1000);
   };
 
-  // Confirm Punch Registration
+  // Step 5: Confirm Punch ("SIM, SOU EU — CONFIRMAR PONTO")
   const handleConfirmPunch = () => {
     if (!selectedEmployee) return;
 
@@ -320,18 +333,21 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
     setLastRegisteredEmpName(selectedEmployee.name);
     setLastRegisteredTypeLabel(getPunchTypeLabel(autoPunchType));
     setLastRegisteredTime(timeFormatted);
-    setShowSuccessOverlay(true);
+    setKioskStep('SUCCESS');
 
-    // Reset back to initial clean date & live camera for the next employee
+    // Auto return back to STANDBY screen after 2.8s for the next employee
     setTimeout(() => {
-      setShowSuccessOverlay(false);
-      setPunchStep('CAMERA');
+      setKioskStep('STANDBY');
       setCapturedPhoto(null);
-      // Auto select first or keep ready for next
     }, 2800);
   };
 
-  // Tablet Initialization Submission
+  // Step 5: Cancel / Not Me ("NÃO SOU EU / CANCELAR")
+  const handleCancelOrNotMe = () => {
+    setShowEmployeePicker(true);
+  };
+
+  // Step 1: Tablet Initialization Submission
   const handleInitSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setInitError(null);
@@ -351,6 +367,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
       cleanPass === '123456'
     ) {
       setIsTabletInitialized(true);
+      setKioskStep('STANDBY');
       setInitError(null);
     } else {
       setInitError('Senha incorreta para inicializar o Tablet da Empresa.');
@@ -389,7 +406,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
     <div className="fixed inset-0 z-50 bg-slate-950 text-slate-100 flex flex-col font-sans select-none overflow-hidden animate-in fade-in">
       
       {/* ------------------------------------------------------------- */}
-      {/* SCREEN 1: LOGIN & SENHA PARA INICIAR O APLICATIVO NO TABLET   */}
+      {/* SCREEN 1: LOGIN & SENHA PARA INICIAR O TABLET                 */}
       {/* ------------------------------------------------------------- */}
       {!isTabletInitialized ? (
         <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950">
@@ -408,7 +425,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                 INICIALIZAÇÃO DO TABLET
               </h2>
               <p className="text-xs text-slate-400 mt-1">
-                Insira o login e senha do tablet para ativar o modo de ponto fixo na recepção.
+                O gestor realiza este login uma única vez para deixar o tablet sempre ligado na recepção.
               </p>
             </div>
 
@@ -441,7 +458,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                     type="password"
                     value={tabletLoginPass}
                     onChange={(e) => setTabletLoginPass(e.target.value)}
-                    placeholder="Digite a senha..."
+                    placeholder="Digite a senha (padrão: 1234)..."
                     className="w-full bg-slate-800/90 text-white placeholder-slate-500 text-xs font-semibold pl-10 pr-4 py-3 rounded-2xl border border-slate-700 focus:outline-none focus:border-indigo-500 transition"
                     required
                   />
@@ -465,10 +482,10 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
             </form>
 
             <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-              <span>Modo Fixo Seguro</span>
+              <span>Modo Fixo Sempre Ligado</span>
               <button
                 onClick={onClose}
-                className="text-slate-400 hover:text-slate-200 underline font-semibold"
+                className="text-slate-400 hover:text-slate-200 underline font-semibold cursor-pointer"
               >
                 Voltar
               </button>
@@ -479,7 +496,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
       ) : (
 
         /* ------------------------------------------------------------- */
-        /* SCREEN 2: TELA PRINCIPAL DO TABLET (DATA + CÂMERA AO VIVO)    */
+        /* ALWAYS-ON TABLET SYSTEM (KIOSK MODES)                         */
         /* ------------------------------------------------------------- */
         <div className="flex-1 flex flex-col relative overflow-hidden bg-slate-950">
           
@@ -488,8 +505,8 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
             <div className="fixed inset-0 z-50 bg-white opacity-80 pointer-events-none transition-opacity duration-200"></div>
           )}
 
-          {/* Minimalist Tablet Header: Only the Date & Clean Clock */}
-          <header className="bg-slate-900/90 backdrop-blur-md border-b border-slate-800/80 px-6 py-4 flex items-center justify-between shrink-0 shadow-lg z-20">
+          {/* Minimalist Tablet Top Bar */}
+          <header className="bg-slate-900/90 backdrop-blur-md border-b border-slate-800/80 px-6 py-3.5 flex items-center justify-between shrink-0 shadow-lg z-20">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-indigo-600/20 text-indigo-400 rounded-xl border border-indigo-500/30">
                 <Tablet className="w-5 h-5" />
@@ -497,168 +514,245 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
               <div>
                 <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400 flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                  Ponto Fixo da Empresa
+                  Tablet Sempre Ligado
                 </span>
-                <h1 className="text-sm font-black text-slate-200">
-                  RECONHECIMENTO FACIAL
+                <h1 className="text-xs sm:text-sm font-black text-slate-200">
+                  TERMINAL FIXO DE PONTO
                 </h1>
-              </div>
-            </div>
-
-            {/* ONLY THE DATE & TIME PROMINENTLY DISPLAYED */}
-            <div className="text-center">
-              <div className="text-xs sm:text-sm font-black text-amber-300 capitalize tracking-wide">
-                {currentTime.dateStr}
-              </div>
-              <div className="text-xs text-slate-400 font-mono font-bold">
-                {currentTime.hhmm}:{currentTime.ss}
               </div>
             </div>
 
             {/* Exit Tablet Button (Protected by Manager Password) */}
             <button
               onClick={() => setShowExitLockModal(true)}
-              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition cursor-pointer"
+              className="p-2 bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition cursor-pointer flex items-center gap-1.5 text-xs font-bold"
               title="Sair do Modo Tablet (Requer senha)"
             >
-              <Lock className="w-4 h-4 text-amber-400" />
+              <Lock className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">Encerrar Modo Tablet</span>
             </button>
           </header>
 
-          {/* MAIN KIOSK BODY */}
-          <main className="flex-1 flex flex-col lg:flex-row items-center justify-center p-4 sm:p-6 md:p-8 gap-6 overflow-y-auto">
-            
-            {/* LEFT / CENTER: CAMERA VISOR & ACTION */}
-            {punchStep === 'CAMERA' ? (
-              <div className="w-full max-w-2xl flex flex-col items-center justify-center space-y-5 animate-in fade-in">
+          {/* ----------------------------------------------------------- */}
+          {/* 1. STANDBY SCREEN (ALWAYS-ON IDLE VIEW)                     */}
+          {/* ----------------------------------------------------------- */}
+          {kioskStep === 'STANDBY' && (
+            <main className="flex-1 flex flex-col items-center justify-center p-6 sm:p-10 text-center bg-gradient-to-b from-slate-950 via-slate-900 to-indigo-950 relative overflow-hidden animate-in fade-in">
+              
+              {/* Background Glow */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none"></div>
+
+              <div className="max-w-xl w-full space-y-8 relative z-10">
                 
-                {/* Big Date Header Display */}
-                <div className="text-center space-y-1">
-                  <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                {/* Date & Company Header */}
+                <div className="space-y-2">
+                  <div className="inline-flex items-center gap-2 bg-indigo-950/80 border border-indigo-700/60 px-4 py-1.5 rounded-full text-indigo-300 text-xs font-bold tracking-wide shadow-lg">
+                    <Building2 className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>{geofence.name}</span>
+                  </div>
+
+                  {/* PROMINENT BRAZILIAN DATE */}
+                  <h2 className="text-xl sm:text-3xl font-black text-amber-300 capitalize tracking-wide drop-shadow-md">
                     {currentTime.dateStr}
                   </h2>
-                  <p className="text-sm text-indigo-300 font-bold flex items-center justify-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                    Posicione seu rosto na câmera para bater o ponto
+                </div>
+
+                {/* PROMINENT LIVE DIGITAL CLOCK (EXACT TIME) */}
+                <div className="bg-slate-900/80 border-2 border-indigo-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md">
+                  <div className="font-mono text-5xl sm:text-7xl md:text-8xl font-black tracking-tight text-white flex items-center justify-center">
+                    <span>{currentTime.hhmm}</span>
+                    <span className="text-indigo-400 animate-pulse mx-1">:</span>
+                    <span className="text-amber-400 text-3xl sm:text-5xl md:text-6xl self-end mb-1 sm:mb-2">{currentTime.ss}</span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-slate-400 font-semibold mt-3">
+                    Horário Oficial de Brasília • Sincronizado
                   </p>
                 </div>
 
-                {/* Live Camera Visor with Face Framing Overlay */}
-                <div className="relative w-72 h-72 sm:w-96 sm:h-96 rounded-3xl overflow-hidden bg-black border-4 border-indigo-500 shadow-2xl shadow-indigo-600/30 flex items-center justify-center group">
-                  {isCameraActive ? (
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="w-full h-full object-cover transform -scale-x-100"
-                    />
-                  ) : (
-                    <div className="relative w-full h-full flex flex-col items-center justify-center p-4 text-center bg-slate-900 overflow-hidden">
-                      {selectedEmployee ? (
-                        <div className="flex flex-col items-center justify-center space-y-2 z-10">
-                          <div className="relative w-28 h-28 sm:w-32 sm:h-32 rounded-full overflow-hidden border-2 border-indigo-400/80 shadow-lg">
-                            <img
-                              src={selectedEmployee.avatar}
-                              alt={selectedEmployee.name}
-                              className="w-full h-full object-cover"
-                            />
-                            <div className="absolute inset-0 bg-indigo-950/30"></div>
-                          </div>
-                          <span className="text-[11px] font-bold text-amber-300 bg-amber-950/80 px-2.5 py-0.5 rounded-full border border-amber-800">
-                            Modo Validação Facial
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => startCamera()}
-                            className="mt-1 px-3 py-1.5 bg-indigo-600/80 hover:bg-indigo-500 text-white rounded-xl text-[11px] font-extrabold flex items-center gap-1.5 transition active:scale-95 shadow cursor-pointer border border-indigo-400/40"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            <span>Ativar Câmera</span>
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center p-6 text-center text-slate-400">
-                          <Loader2 className="w-10 h-10 animate-spin text-indigo-500 mb-3" />
-                          <p className="text-xs font-semibold">{cameraError || 'Iniciando câmera do tablet...'}</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Face Framing Overlay UI */}
-                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                    {/* Oval Face Guide */}
-                    <div className="w-48 h-64 sm:w-60 sm:h-80 border-2 border-dashed border-indigo-400/80 rounded-[50%] shadow-inner flex items-center justify-center animate-pulse">
-                      <div className="text-[10px] uppercase tracking-widest text-indigo-300 bg-slate-950/70 px-2 py-0.5 rounded-full font-black">
-                        Enquadre seu rosto
-                      </div>
-                    </div>
-
-                    {/* Corner Target Marks */}
-                    <div className="absolute top-4 left-4 w-6 h-6 border-t-4 border-l-4 border-amber-400 rounded-tl-lg"></div>
-                    <div className="absolute top-4 right-4 w-6 h-6 border-t-4 border-r-4 border-amber-400 rounded-tr-lg"></div>
-                    <div className="absolute bottom-4 left-4 w-6 h-6 border-b-4 border-l-4 border-amber-400 rounded-bl-lg"></div>
-                    <div className="absolute bottom-4 right-4 w-6 h-6 border-b-4 border-r-4 border-amber-400 rounded-br-lg"></div>
-                  </div>
-
-                  {/* Live Status Bar */}
-                  <div className="absolute bottom-3 inset-x-3 bg-slate-950/80 backdrop-blur-md py-1.5 px-3 rounded-xl border border-slate-700/80 flex items-center justify-between text-xs">
-                    <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                      Câmera Ativa
-                    </span>
-                    <span className="text-[11px] font-mono text-slate-300">
-                      {currentTime.hhmm}:{currentTime.ss}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Big Punch Button */}
-                <div className="w-full max-w-md space-y-3">
+                {/* THE CLOCK-IN BUTTON (TAKE PHOTO / FACE ID) */}
+                <div className="space-y-3 pt-2">
                   <button
                     type="button"
-                    onClick={() => handleTakeFacePhotoAndPunch()}
-                    className="w-full py-4 sm:py-5 px-8 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-base sm:text-lg rounded-3xl shadow-2xl shadow-emerald-500/40 active:scale-98 transition flex items-center justify-center gap-3 cursor-pointer border-2 border-emerald-300"
+                    onClick={handleOpenFullscreenCamera}
+                    className="w-full py-5 sm:py-6 px-8 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-base sm:text-xl rounded-3xl shadow-2xl shadow-emerald-500/30 hover:shadow-emerald-500/50 active:scale-98 transition duration-150 flex items-center justify-center gap-3 cursor-pointer border-2 border-emerald-300 group"
                   >
-                    <Camera className="w-6 h-6 stroke-[2.5]" />
-                    <span>BATER O PONTO AGORA</span>
+                    <div className="p-2 bg-slate-950 text-emerald-400 rounded-2xl group-hover:scale-110 transition-transform">
+                      <Camera className="w-7 h-7 stroke-[2.5]" />
+                    </div>
+                    <div className="text-left">
+                      <div className="leading-tight">BATER PONTO COM FOTO</div>
+                      <div className="text-xs text-emerald-950 font-bold opacity-90">Reconhecimento Facial Automático</div>
+                    </div>
+                    <ArrowRight className="w-6 h-6 ml-auto group-hover:translate-x-1 transition-transform" />
                   </button>
 
-                  {/* Switch Employee if needed */}
-                  <div className="flex items-center justify-between px-2 text-xs">
-                    <span className="text-slate-400">
-                      Colaborador: <strong className="text-white">{selectedEmployee?.name || 'Selecione'}</strong>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowEmployeePicker(true)}
-                      className="text-indigo-400 hover:text-indigo-300 font-bold underline cursor-pointer flex items-center gap-1"
-                    >
-                      <Users className="w-3.5 h-3.5" />
-                      Trocar nome
-                    </button>
-                  </div>
+                  <p className="text-xs text-slate-400 font-medium">
+                    Toque no botão acima para abrir a câmera e registrar sua presença instantaneamente.
+                  </p>
                 </div>
 
               </div>
-            ) : (
+            </main>
+          )}
 
-              /* ------------------------------------------------------------- */
-              /* CONFIRMATION SCREEN: "É VOCÊ MESMO?"                         */
-              /* ------------------------------------------------------------- */
-              <div className="w-full max-w-2xl bg-slate-900/95 border-2 border-indigo-500/60 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 animate-in zoom-in-95">
+          {/* ----------------------------------------------------------- */}
+          {/* 2. FULL-SCREEN CAMERA VIEW (TAKING THE WHOLE SCREEN)        */}
+          {/* ----------------------------------------------------------- */}
+          {kioskStep === 'CAMERA_FULLSCREEN' && (
+            <main className="flex-1 flex flex-col relative bg-black overflow-hidden animate-in fade-in">
+              
+              {/* Fullscreen Video Element */}
+              <div className="absolute inset-0 w-full h-full flex items-center justify-center overflow-hidden">
+                {isCameraActive ? (
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover transform -scale-x-100"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-6 text-center text-slate-400 z-10">
+                    <Loader2 className="w-12 h-12 animate-spin text-indigo-500 mb-4" />
+                    <p className="text-sm font-bold text-white">Abrindo câmera em tela cheia...</p>
+                    {cameraError && (
+                      <p className="text-xs text-amber-300 mt-2 max-w-sm">{cameraError}</p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => startCamera()}
+                      className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold cursor-pointer"
+                    >
+                      Tentar Novamente
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Overlay Face Target Guide */}
+              <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
+                {/* Oval Face Guide */}
+                <div className="relative w-64 h-80 sm:w-80 sm:h-96 border-4 border-dashed border-indigo-400 rounded-[50%] shadow-[0_0_50px_rgba(99,102,241,0.5)] flex items-center justify-center animate-pulse">
+                  <div className="text-[11px] uppercase tracking-widest text-indigo-200 bg-slate-950/80 px-3 py-1 rounded-full font-black border border-indigo-500/40">
+                    Posicione seu rosto
+                  </div>
+
+                  {/* Corner Target Marks */}
+                  <div className="absolute -top-3 -left-3 w-8 h-8 border-t-4 border-l-4 border-amber-400 rounded-tl-xl"></div>
+                  <div className="absolute -top-3 -right-3 w-8 h-8 border-t-4 border-r-4 border-amber-400 rounded-tr-xl"></div>
+                  <div className="absolute -bottom-3 -left-3 w-8 h-8 border-b-4 border-l-4 border-amber-400 rounded-bl-xl"></div>
+                  <div className="absolute -bottom-3 -right-3 w-8 h-8 border-b-4 border-r-4 border-amber-400 rounded-br-xl"></div>
+                </div>
+              </div>
+
+              {/* Top Banner on Camera: Live Date & Instructions */}
+              <div className="relative z-20 bg-gradient-to-b from-slate-950/90 via-slate-950/60 to-transparent p-4 sm:p-6 flex items-center justify-between">
+                <div>
+                  <h3 className="text-base sm:text-xl font-black text-white flex items-center gap-2">
+                    <ScanFace className="w-5 h-5 text-indigo-400" />
+                    Reconhecimento Facial do Tablet
+                  </h3>
+                  <p className="text-xs text-amber-300 font-bold capitalize">
+                    {currentTime.dateStr} • {currentTime.hhmm}:{currentTime.ss}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setKioskStep('STANDBY')}
+                  className="px-3.5 py-2 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-600 transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <X className="w-4 h-4" />
+                  <span>Voltar</span>
+                </button>
+              </div>
+
+              {/* Bottom Action Bar on Camera */}
+              <div className="mt-auto relative z-20 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent p-6 sm:p-8 flex flex-col items-center gap-3">
                 
-                {/* Header Confirmation */}
+                {/* Big Capture Face Button */}
+                <button
+                  type="button"
+                  onClick={() => handleCaptureAndRecognizeFace()}
+                  className="w-full max-w-md py-4 sm:py-5 px-8 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-base sm:text-lg rounded-3xl shadow-2xl shadow-emerald-500/40 active:scale-95 transition flex items-center justify-center gap-3 cursor-pointer border-2 border-emerald-300"
+                >
+                  <Camera className="w-6 h-6 stroke-[2.5]" />
+                  <span>CAPTURAR FOTO / RECONHECER ROSTO</span>
+                </button>
+
+                {/* Switch employee profile if needed */}
+                <div className="flex items-center justify-between w-full max-w-md text-xs px-2">
+                  <span className="text-slate-300">
+                    Colaborador detectado: <strong className="text-amber-300">{selectedEmployee?.name || 'Automático'}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowEmployeePicker(true)}
+                    className="text-indigo-400 hover:text-indigo-300 font-extrabold underline cursor-pointer flex items-center gap-1"
+                  >
+                    <Users className="w-3.5 h-3.5" />
+                    Trocar nome
+                  </button>
+                </div>
+
+              </div>
+
+            </main>
+          )}
+
+          {/* ----------------------------------------------------------- */}
+          {/* 3. SCANNING FACE ID ANIMATION STEP                          */}
+          {/* ----------------------------------------------------------- */}
+          {kioskStep === 'SCANNING_FACE' && (
+            <main className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-slate-950 relative overflow-hidden animate-in fade-in">
+              <div className="max-w-md w-full space-y-6 flex flex-col items-center">
+                
+                {/* Photo with Scanning Laser Animation */}
+                <div className="relative w-56 h-56 rounded-3xl overflow-hidden border-4 border-indigo-500 shadow-2xl shadow-indigo-600/40 bg-black">
+                  <img
+                    src={capturedPhoto || selectedEmployee?.avatar}
+                    alt="Foto capturada"
+                    className="w-full h-full object-cover"
+                  />
+                  {/* Laser Scan Line */}
+                  <div className="absolute inset-x-0 h-1 bg-gradient-to-r from-emerald-400 via-teal-300 to-indigo-400 shadow-[0_0_15px_rgba(52,211,153,1)] animate-bounce"></div>
+                  <div className="absolute inset-0 bg-indigo-500/10 pointer-events-none"></div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="inline-flex items-center gap-2 bg-indigo-950 text-indigo-300 text-xs font-black uppercase tracking-widest px-3 py-1 rounded-full border border-indigo-800">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                    Biometria Facial
+                  </div>
+                  <h3 className="text-2xl font-black text-white">
+                    IDENTIFICANDO FACE ID...
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Processando pontos biométricos e comparando cadastro oficial.
+                  </p>
+                </div>
+
+              </div>
+            </main>
+          )}
+
+          {/* ----------------------------------------------------------- */}
+          {/* 4. CONFIRMATION STEP: "É VOCÊ MESMO?"                       */}
+          {/* ----------------------------------------------------------- */}
+          {kioskStep === 'CONFIRMATION' && (
+            <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 md:p-8 overflow-y-auto bg-slate-950 animate-in zoom-in-95">
+              <div className="w-full max-w-2xl bg-slate-900/95 border-2 border-indigo-500/60 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+                
+                {/* Header with Employee Name & Question */}
                 <div className="text-center space-y-1">
-                  <span className="text-xs font-black uppercase tracking-widest text-amber-400 bg-amber-950/80 px-3 py-1 rounded-full border border-amber-800">
+                  <span className="text-xs font-black uppercase tracking-widest text-amber-400 bg-amber-950/80 px-3.5 py-1 rounded-full border border-amber-800">
                     Confirmação de Identidade
                   </span>
-                  <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight mt-2">
-                    É VOCÊ MESMO?
+                  <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight mt-2">
+                    {selectedEmployee?.name}
                   </h2>
-                  <p className="text-xs sm:text-sm text-slate-300 font-medium">
-                    Verifique sua foto tirada na câmera e sua foto cadastrada no sistema.
+                  <p className="text-base sm:text-lg text-emerald-400 font-extrabold flex items-center justify-center gap-1.5">
+                    <HelpCircle className="w-5 h-5" /> É você mesmo?
                   </p>
                 </div>
 
@@ -670,7 +764,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                     <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider flex items-center justify-center gap-1">
                       <Camera className="w-3 h-3" /> Sua Foto Tirada Agora
                     </span>
-                    <div className="w-40 h-40 mx-auto rounded-2xl overflow-hidden bg-black border-2 border-emerald-400 shadow-md">
+                    <div className="w-36 h-36 sm:w-40 sm:h-40 mx-auto rounded-2xl overflow-hidden bg-black border-2 border-emerald-400 shadow-md">
                       <img
                         src={capturedPhoto || selectedEmployee?.avatar}
                         alt="Foto capturada"
@@ -678,7 +772,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                       />
                     </div>
                     <span className="text-[11px] font-bold text-slate-400 block">
-                      Registrada às {currentTime.hhmm}:{currentTime.ss}
+                      Capturada às {currentTime.hhmm}:{currentTime.ss}
                     </span>
                   </div>
 
@@ -687,7 +781,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                     <span className="text-[10px] font-black uppercase text-indigo-300 tracking-wider flex items-center justify-center gap-1">
                       <ShieldCheck className="w-3 h-3" /> Foto Cadastrada
                     </span>
-                    <div className="w-40 h-40 mx-auto rounded-2xl overflow-hidden bg-black border-2 border-indigo-400 shadow-md">
+                    <div className="w-36 h-36 sm:w-40 sm:h-40 mx-auto rounded-2xl overflow-hidden bg-black border-2 border-indigo-400 shadow-md">
                       <img
                         src={selectedEmployee?.avatar}
                         alt={selectedEmployee?.name}
@@ -702,7 +796,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
 
                 </div>
 
-                {/* Automatic Punch Type Info (No manual choice needed!) */}
+                {/* Automatic Punch Type Info */}
                 <div className="bg-slate-950/90 rounded-2xl p-4 border border-slate-800 flex items-center justify-between text-xs">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
@@ -722,7 +816,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                   </div>
                 </div>
 
-                {/* Big Action Buttons: YES, IT'S ME or NO, IT'S NOT ME */}
+                {/* Big Action Buttons: YES, IT'S ME vs CANCEL / NOT ME */}
                 <div className="flex flex-col sm:flex-row gap-3 pt-2">
                   <button
                     type="button"
@@ -735,34 +829,59 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => {
-                      setPunchStep('CAMERA');
-                      setCapturedPhoto(null);
-                      setShowEmployeePicker(true);
-                    }}
-                    className="py-4 px-6 bg-slate-800 hover:bg-slate-700 text-slate-300 font-extrabold text-xs sm:text-sm rounded-2xl border border-slate-700 transition cursor-pointer"
+                    onClick={handleCancelOrNotMe}
+                    className="py-4 px-6 bg-slate-800 hover:bg-slate-700 text-rose-300 hover:text-white font-extrabold text-xs sm:text-sm rounded-2xl border border-slate-700 transition cursor-pointer flex items-center justify-center gap-1.5"
                   >
-                    NÃO SOU EU / TROCAR
+                    <X className="w-4 h-4 text-rose-400" />
+                    <span>CANCELAR / NÃO SOU EU</span>
                   </button>
                 </div>
 
               </div>
-            )}
+            </main>
+          )}
 
-          </main>
+          {/* ----------------------------------------------------------- */}
+          {/* 5. SUCCESS OVERLAY STEP                                     */}
+          {/* ----------------------------------------------------------- */}
+          {kioskStep === 'SUCCESS' && (
+            <main className="flex-1 flex flex-col items-center justify-center text-center p-6 bg-emerald-950/95 backdrop-blur-md animate-in zoom-in-95">
+              <div className="w-24 h-24 rounded-full bg-emerald-500/20 border-4 border-emerald-400 text-emerald-300 flex items-center justify-center mb-6 animate-bounce shadow-2xl">
+                <Check className="w-12 h-12 stroke-[3]" />
+              </div>
 
-          {/* EMPLOYEE PICKER MODAL (In case employee needs to select their profile) */}
+              <span className="text-xs font-black uppercase tracking-widest text-emerald-400 bg-emerald-900/80 px-4 py-1 rounded-full mb-3 border border-emerald-700">
+                Ponto Confirmado no Tablet
+              </span>
+
+              <h2 className="text-3xl sm:text-4xl font-black text-white mb-2 tracking-tight">
+                PONTO REGISTRADO COM SUCESSO!
+              </h2>
+
+              <p className="text-base text-emerald-200 font-bold max-w-md mb-6">
+                Obrigado, <strong className="text-white uppercase">{lastRegisteredEmpName}</strong>! Sua batida de{' '}
+                <span className="underline">{lastRegisteredTypeLabel}</span> foi gravada às {lastRegisteredTime}.
+              </p>
+
+              <div className="flex items-center gap-2 text-xs font-semibold text-emerald-300 bg-emerald-900/50 px-4 py-2 rounded-xl">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Retornando à tela inicial para o próximo colaborador...</span>
+              </div>
+            </main>
+          )}
+
+          {/* EMPLOYEE PICKER MODAL (In case employee needs to select/correct their profile) */}
           {showEmployeePicker && (
             <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
               <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-2xl w-full shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
                   <div>
                     <h3 className="text-base font-black text-white">Selecione seu Nome</h3>
-                    <p className="text-xs text-slate-400">Escolha seu cadastro para bater o ponto no tablet.</p>
+                    <p className="text-xs text-slate-400">Escolha seu cadastro para associar à foto capturada.</p>
                   </div>
                   <button
                     onClick={() => setShowEmployeePicker(false)}
-                    className="p-2 hover:bg-slate-800 text-slate-400 rounded-xl"
+                    className="p-2 hover:bg-slate-800 text-slate-400 rounded-xl cursor-pointer"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -787,7 +906,11 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                       onClick={() => {
                         setSelectedEmployee(emp);
                         setShowEmployeePicker(false);
-                        handleTakeFacePhotoAndPunch(emp);
+                        if (kioskStep === 'CONFIRMATION') {
+                          // Update confirmation
+                        } else {
+                          handleCaptureAndRecognizeFace(emp);
+                        }
                       }}
                       className="p-3 bg-slate-800/80 hover:bg-indigo-600/20 border border-slate-700 hover:border-indigo-500 rounded-2xl flex items-center gap-3 text-left transition cursor-pointer group"
                     >
@@ -808,33 +931,6 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                     </button>
                   ))}
                 </div>
-              </div>
-            </div>
-          )}
-
-          {/* SUCCESS OVERLAY SCREEN (Auto-resets after 2.8s for the next person) */}
-          {showSuccessOverlay && (
-            <div className="fixed inset-0 z-50 bg-emerald-950/95 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 animate-in zoom-in-95">
-              <div className="w-24 h-24 rounded-full bg-emerald-500/20 border-4 border-emerald-400 text-emerald-300 flex items-center justify-center mb-6 animate-bounce shadow-2xl">
-                <Check className="w-12 h-12 stroke-[3]" />
-              </div>
-
-              <span className="text-xs font-black uppercase tracking-widest text-emerald-400 bg-emerald-900/80 px-4 py-1 rounded-full mb-3 border border-emerald-700">
-                Ponto Confirmado no Tablet
-              </span>
-
-              <h2 className="text-3xl sm:text-4xl font-black text-white mb-2 tracking-tight">
-                PONTO REGISTRADO COM SUCESSO!
-              </h2>
-
-              <p className="text-base text-emerald-200 font-bold max-w-md mb-6">
-                Obrigado, <strong className="text-white uppercase">{lastRegisteredEmpName}</strong>! Sua batida de{' '}
-                <span className="underline">{lastRegisteredTypeLabel}</span> foi gravada às {lastRegisteredTime}.
-              </p>
-
-              <div className="flex items-center gap-2 text-xs font-semibold text-emerald-300 bg-emerald-900/50 px-4 py-2 rounded-xl">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Pronto para o próximo colaborador...</span>
               </div>
             </div>
           )}
@@ -876,13 +972,13 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                         setExitPasswordInput('');
                         setExitError(null);
                       }}
-                      className="px-4 py-2 bg-slate-800 text-slate-300 font-bold text-xs rounded-xl"
+                      className="px-4 py-2 bg-slate-800 text-slate-300 font-bold text-xs rounded-xl cursor-pointer"
                     >
                       Cancelar
                     </button>
                     <button
                       type="submit"
-                      className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-xl shadow-md"
+                      className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-xl shadow-md cursor-pointer"
                     >
                       Confirmar Saída
                     </button>

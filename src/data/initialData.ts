@@ -167,11 +167,11 @@ function generateDaysForEmployee(employeeName: string): DayPonto[] {
 export const INITIAL_EMPLOYEES: Employee[] = [
   {
     id: 'emp-1',
-    name: 'João da Silva',
+    name: 'Rodrigo dos Santos Souza',
     role: 'Desenvolvedor Front-End',
-    department: 'Tecnologia',
+    department: 'Tecnologia & Operações',
     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-    email: 'joao.silva@empresa.com.br',
+    email: 'rodrigo.souza@empresa.com.br',
     cpf: '123.456.789-00',
     pispasep: '123.45678.90-1',
     admissionDate: '15/01/2023',
@@ -184,7 +184,7 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     isOnline: true,
     lastPunchType: 'ENTRADA',
     lastPunchTime: '08:02:15',
-    days: generateDaysForEmployee('João da Silva'),
+    days: generateDaysForEmployee('Rodrigo dos Santos Souza'),
     bancoDeHorasMinutes: 113, // +01:53 accumulated bank of hours
     lunchMode: 'AUTOMATICO',
     lunchDurationMinutes: 60,

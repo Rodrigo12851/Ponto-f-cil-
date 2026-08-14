@@ -4,6 +4,7 @@ import { Employee, LocationData, PunchType } from '../types';
 import { getPunchTypeLabel } from '../utils/timeFormatters';
 import { requestScreenWakeLock, releaseScreenWakeLock } from '../utils/wakeLock';
 import { verifyEmployeeFaceAgainstAvatar, verifyAndRecognizeFace } from '../utils/faceBiometrics';
+import { addFacialAuditLog } from '../utils/facialAuditStorage';
 
 interface CameraModalProps {
   isOpen: boolean;
@@ -114,18 +115,90 @@ export const CameraModal: React.FC<CameraModalProps> = ({
         setBioErrorCode(bioResult.error || 'FACE_NOT_MATCHED');
         setBioStageFailed(bioResult.stageFailed || null);
         setBioQuality(bioResult.quality || null);
+
+        // Record audit log for failed verification
+        addFacialAuditLog({
+          attemptType: 'MOBILE_APP_11',
+          result: 'FAILURE',
+          employeeId: employee?.id,
+          employeeName: employee?.name || 'Não identificado',
+          employeeAvatar: employee?.avatar,
+          employeeRole: employee?.role,
+          employeeDepartment: employee?.department,
+          confidence: bioResult.confidence || 0,
+          minThreshold: 90,
+          faceCount: bioResult.faceCount !== undefined ? bioResult.faceCount : (bioResult.error === 'MULTIPLE_FACES_DETECTED' ? 2 : bioResult.error === 'NO_FACE_DETECTED' ? 0 : 1),
+          stageFailed: bioResult.stageFailed || 'BIOMETRIC_MATCH',
+          errorCode: bioResult.error || 'FACE_NOT_MATCHED',
+          failureReason: bioResult.errorMessage,
+          debugInfo: bioResult.debugInfo,
+          qualityMetrics: bioResult.quality ? {
+            brightnessScore: bioResult.quality.brightnessScore,
+            sharpnessScore: bioResult.quality.sharpnessScore,
+            contrastScore: bioResult.quality.contrastScore,
+            symmetryScore: bioResult.quality.symmetryScore,
+            overallQuality: bioResult.quality.overallScore,
+          } : undefined,
+          photoSnapshot: dataUrl,
+          deviceLabel: 'Smartphone Pessoal (App Ponto)',
+          ipOrLocation: location.address || 'Localização Ponto',
+        });
       } else {
         setBioConfidence(bioResult.confidence || 95);
         setBioError(null);
         setBioErrorCode(null);
         setBioStageFailed(null);
         setBioQuality(bioResult.quality || null);
+
+        const matched = bioResult.matchedEmployee || employee;
+        // Record audit log for successful verification
+        addFacialAuditLog({
+          attemptType: 'MOBILE_APP_11',
+          result: 'SUCCESS',
+          employeeId: matched?.id,
+          employeeName: matched?.name || 'Colaborador',
+          employeeAvatar: matched?.avatar,
+          employeeRole: matched?.role,
+          employeeDepartment: matched?.department,
+          confidence: bioResult.confidence || 96,
+          minThreshold: 90,
+          faceCount: 1,
+          stageFailed: 'NONE',
+          errorCode: 'NONE',
+          debugInfo: `Autenticado com ${bioResult.confidence || 96}% de precisão`,
+          qualityMetrics: bioResult.quality ? {
+            brightnessScore: bioResult.quality.brightnessScore,
+            sharpnessScore: bioResult.quality.sharpnessScore,
+            contrastScore: bioResult.quality.contrastScore,
+            symmetryScore: bioResult.quality.symmetryScore,
+            overallQuality: bioResult.quality.overallScore,
+          } : undefined,
+          photoSnapshot: dataUrl,
+          deviceLabel: 'Smartphone Pessoal (App Ponto)',
+          ipOrLocation: location.address || 'Localização Ponto',
+        });
       }
     } catch (err) {
       setIsVerifyingBio(false);
       setBioConfidence(0);
       setBioError('Face not recognized. Erro ao processar validação biométrica.');
       setBioErrorCode('IMAGE_ERROR');
+
+      addFacialAuditLog({
+        attemptType: 'MOBILE_APP_11',
+        result: 'FAILURE',
+        employeeId: employee?.id,
+        employeeName: employee?.name,
+        confidence: 0,
+        minThreshold: 90,
+        faceCount: 0,
+        stageFailed: 'IMAGE_QUALITY',
+        errorCode: 'IMAGE_ERROR',
+        failureReason: 'Erro durante o processamento do quadro de imagem.',
+        photoSnapshot: dataUrl,
+        deviceLabel: 'Smartphone Pessoal (App Ponto)',
+        ipOrLocation: location.address || 'Localização Ponto',
+      });
     }
   }, [playShutterSound, stream, employee, employees]);
 

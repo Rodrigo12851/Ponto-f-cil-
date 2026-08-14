@@ -4,6 +4,7 @@ import { getPunchTypeLabel, getBrazilianFullDate } from '../utils/timeFormatters
 import { getCurrentLocation } from '../utils/geolocation';
 import { requestScreenWakeLock, releaseScreenWakeLock } from '../utils/wakeLock';
 import { verifyAndRecognizeFace } from '../utils/faceBiometrics';
+import { addFacialAuditLog } from '../utils/facialAuditStorage';
 import confetti from 'canvas-confetti';
 import {
   Tablet,
@@ -385,12 +386,65 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
       if (result.success && result.matchedEmployee) {
         setSelectedEmployee(result.matchedEmployee);
         setFaceConfidence(result.confidence || 98);
+
+        // Audit Log for Success in Kiosk
+        addFacialAuditLog({
+          attemptType: 'TABLET_KIOSK_1N',
+          result: 'SUCCESS',
+          employeeId: result.matchedEmployee.id,
+          employeeName: result.matchedEmployee.name,
+          employeeAvatar: result.matchedEmployee.avatar,
+          employeeRole: result.matchedEmployee.role,
+          employeeDepartment: result.matchedEmployee.department,
+          confidence: result.confidence || 98,
+          minThreshold: 90,
+          faceCount: 1,
+          stageFailed: 'NONE',
+          errorCode: 'NONE',
+          debugInfo: `Reconhecimento 1:N com ${result.confidence || 98}% de similaridade (${result.matchedEmployee.name})`,
+          qualityMetrics: result.quality ? {
+            brightnessScore: result.quality.brightnessScore,
+            sharpnessScore: result.quality.sharpnessScore,
+            contrastScore: result.quality.contrastScore,
+            symmetryScore: result.quality.symmetryScore,
+            overallQuality: result.quality.overallScore,
+          } : undefined,
+          photoSnapshot: photoData,
+          deviceLabel: 'Tablet Quiosque Recepção (Samsung Galaxy Tab)',
+          ipOrLocation: geofence?.address || 'Sede Central',
+        });
+
         setTimeout(() => {
           playBeep();
           setKioskStep('CONFIRMATION');
         }, 900);
       } else {
         setSelectedEmployee(null);
+
+        // Audit Log for Failure in Kiosk
+        addFacialAuditLog({
+          attemptType: 'TABLET_KIOSK_1N',
+          result: 'FAILURE',
+          employeeName: 'Pessoa Não Identificada',
+          confidence: result.confidence || 0,
+          minThreshold: 90,
+          faceCount: result.faceCount !== undefined ? result.faceCount : (result.error === 'MULTIPLE_FACES_DETECTED' ? 2 : result.error === 'NO_FACE_DETECTED' ? 0 : 1),
+          stageFailed: result.stageFailed || (result.error === 'MULTIPLE_FACES_DETECTED' || result.error === 'NO_FACE_DETECTED' ? 'FACE_COUNT' : result.error === 'INSUFFICIENT_QUALITY' ? 'IMAGE_QUALITY' : 'BIOMETRIC_MATCH'),
+          errorCode: result.error || 'FACE_NOT_MATCHED',
+          failureReason: result.errorMessage || 'Rosto não identificado ou não compatível.',
+          debugInfo: result.debugInfo,
+          qualityMetrics: result.quality ? {
+            brightnessScore: result.quality.brightnessScore,
+            sharpnessScore: result.quality.sharpnessScore,
+            contrastScore: result.quality.contrastScore,
+            symmetryScore: result.quality.symmetryScore,
+            overallQuality: result.quality.overallScore,
+          } : undefined,
+          photoSnapshot: photoData,
+          deviceLabel: 'Tablet Quiosque Recepção (Samsung Galaxy Tab)',
+          ipOrLocation: geofence?.address || 'Sede Central',
+        });
+
         setTimeout(() => {
           setFaceErrorDetails({
             type: result.error || 'FACE_NOT_MATCHED',
@@ -402,6 +456,21 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
       }
     } catch (err) {
       setSelectedEmployee(null);
+
+      addFacialAuditLog({
+        attemptType: 'TABLET_KIOSK_1N',
+        result: 'FAILURE',
+        confidence: 0,
+        minThreshold: 90,
+        faceCount: 0,
+        stageFailed: 'IMAGE_QUALITY',
+        errorCode: 'IMAGE_ERROR',
+        failureReason: 'Erro durante o processamento do Face ID.',
+        photoSnapshot: photoData,
+        deviceLabel: 'Tablet Quiosque Recepção (Samsung Galaxy Tab)',
+        ipOrLocation: geofence?.address || 'Sede Central',
+      });
+
       setTimeout(() => {
         setFaceErrorDetails({
           type: 'IMAGE_ERROR',

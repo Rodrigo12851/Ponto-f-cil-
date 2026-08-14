@@ -127,3 +127,50 @@ export interface OwnerSettings {
 export type UserRole = 'PROPRIETARIO' | 'GESTOR' | 'COLABORADOR';
 
 export type ActiveTab = 'inicio' | 'historico' | 'relatorios' | 'admin' | 'espelho' | 'proprietario';
+
+export interface FacialAuditQualityMetrics {
+  brightnessScore?: number; // 0 to 100
+  sharpnessScore?: number;  // 0 to 100
+  contrastScore?: number;   // 0 to 100
+  symmetryScore?: number;   // 0 to 100
+  overallQuality?: number;  // 0 to 100
+}
+
+export type FacialAuditAttemptType = 'TABLET_KIOSK_1N' | 'MOBILE_APP_11' | 'CALIBRATION_TEST';
+
+export type FacialAuditResult = 'SUCCESS' | 'FAILURE';
+
+export type FacialAuditErrorCode =
+  | 'NO_FACE_DETECTED'
+  | 'MULTIPLE_FACES_DETECTED'
+  | 'INSUFFICIENT_QUALITY'
+  | 'FACE_NOT_MATCHED'
+  | 'IMAGE_ERROR'
+  | 'NONE';
+
+export type FacialAuditStage = 'FACE_COUNT' | 'IMAGE_QUALITY' | 'BIOMETRIC_MATCH' | 'NONE';
+
+export interface FacialAuditLog {
+  id: string;
+  timestamp: string; // ISO string e.g. "2026-08-13T17:28:42.123Z"
+  formattedDate: string; // e.g. "13/08/2026"
+  formattedTime: string; // e.g. "17:28:42"
+  attemptType: FacialAuditAttemptType;
+  result: FacialAuditResult;
+  employeeId?: string;
+  employeeName?: string;
+  employeeAvatar?: string;
+  employeeRole?: string;
+  employeeDepartment?: string;
+  confidence: number; // percentage (0 to 100)
+  minThreshold: number; // usually 90
+  faceCount: number;
+  stageFailed?: FacialAuditStage;
+  errorCode?: FacialAuditErrorCode;
+  failureReason?: string;
+  debugInfo?: string;
+  qualityMetrics?: FacialAuditQualityMetrics;
+  photoSnapshot?: string;
+  deviceLabel?: string;
+  ipOrLocation?: string;
+}

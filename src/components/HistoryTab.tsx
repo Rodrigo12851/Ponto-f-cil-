@@ -21,7 +21,10 @@ import {
   Camera,
   User,
   Maximize2,
+  Shield,
 } from 'lucide-react';
+import { FacialAuditLogView } from './FacialAuditLogView';
+import { getFacialAuditLogs } from '../utils/facialAuditStorage';
 
 interface HistoryTabProps {
   employee: Employee;
@@ -40,6 +43,7 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
   onRequestAdjustment,
   onOpenEspelhoPrint,
 }) => {
+  const [historySubView, setHistorySubView] = useState<'PUNCH_HISTORY' | 'FACIAL_AUDIT'>('PUNCH_HISTORY');
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
   const [showAdjustmentModal, setShowAdjustmentModal] = useState<boolean>(false);
   const [adjDay, setAdjDay] = useState<number>(10);
@@ -50,6 +54,10 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
 
   // Photo modal state
   const [previewPhoto, setPreviewPhoto] = useState<{ url: string; title: string; time: string; location?: string } | null>(null);
+
+  // Audit Logs count
+  const auditLogs = getFacialAuditLogs();
+  const failureCount = auditLogs.filter((l) => l.result === 'FAILURE').length;
 
   // Month Statistics
   const pastWorkedDays = employee.days.filter((d) => d.status === 'TRABALHADO' || d.status === 'EM_ANDAMENTO');
@@ -79,6 +87,47 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
           </button>
         </div>
       )}
+
+      {/* Sub-view Navigation Switch: Punch History vs Facial Audit Logs */}
+      <div className="bg-slate-900/90 backdrop-blur-md p-1.5 rounded-2xl border border-slate-800 shadow-md flex items-center gap-1.5">
+        <button
+          onClick={() => setHistorySubView('PUNCH_HISTORY')}
+          className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition flex items-center justify-center gap-2 cursor-pointer ${
+            historySubView === 'PUNCH_HISTORY'
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+          }`}
+        >
+          <Calendar className="w-4 h-4 shrink-0" />
+          <span>Registros de Ponto (Diário)</span>
+        </button>
+
+        <button
+          onClick={() => setHistorySubView('FACIAL_AUDIT')}
+          className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition flex items-center justify-center gap-2 cursor-pointer ${
+            historySubView === 'FACIAL_AUDIT'
+              ? 'bg-indigo-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+          }`}
+        >
+          <Shield className="w-4 h-4 shrink-0 text-indigo-400" />
+          <span>Auditoria Facial & Segurança</span>
+          {failureCount > 0 && (
+            <span className="text-[10px] bg-rose-500 text-white font-mono px-1.5 py-0.2 rounded-full font-bold">
+              {failureCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {historySubView === 'FACIAL_AUDIT' ? (
+        <FacialAuditLogView
+          currentEmployee={employee}
+          employees={employees}
+          isAdmin={isAdmin}
+        />
+      ) : (
+        <>
 
       {/* Gestor Employee Selector Header */}
       {isAdmin && employees && employees.length > 0 && (
@@ -416,6 +465,8 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
           );
         })}
       </div>
+        </>
+      )}
 
       {/* Photo Lightbox Preview Modal */}
       {previewPhoto && (

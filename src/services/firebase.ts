@@ -15,7 +15,7 @@ import {
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { Employee, CompanyGeofence, OwnerSettings, FacialAuditLog } from '../types';
-import { INITIAL_EMPLOYEES } from '../data/initialData';
+import { INITIAL_EMPLOYEES, SAMPLE_TEST_EMPLOYEES } from '../data/initialData';
 import { DEFAULT_GEOFENCE } from '../utils/geolocation';
 import { DEFAULT_OWNER_SETTINGS } from '../utils/ownerStorage';
 
@@ -54,12 +54,7 @@ export function subscribeEmployees(
       colRef,
       async (snapshot) => {
         if (snapshot.empty) {
-          console.log('Firebase employees collection is empty, seeding initial employees...');
-          try {
-            await seedInitialEmployees();
-          } catch (seedErr) {
-            console.error('Error seeding initial employees to Firebase:', seedErr);
-          }
+          onUpdate([]);
           return;
         }
 
@@ -102,10 +97,40 @@ function handleFirestoreError(context: string, err: any) {
   }
 }
 
+export async function clearAllEmployeesFromFirestore(): Promise<void> {
+  try {
+    const colRef = collection(db, EMPLOYEES_COLLECTION);
+    const snapshot = await getDocs(colRef);
+    const batch = writeBatch(db);
+    snapshot.forEach((docSnap) => {
+      batch.delete(docSnap.ref);
+    });
+    await batch.commit();
+    console.log('All employees successfully cleared from Firebase Firestore.');
+  } catch (err: any) {
+    handleFirestoreError('clearAllEmployeesFromFirestore', err);
+  }
+}
+
+export async function clearAllAuditLogsFromFirestore(): Promise<void> {
+  try {
+    const colRef = collection(db, FACIAL_AUDIT_COLLECTION);
+    const snapshot = await getDocs(colRef);
+    const batch = writeBatch(db);
+    snapshot.forEach((docSnap) => {
+      batch.delete(docSnap.ref);
+    });
+    await batch.commit();
+    console.log('All facial audit logs cleared from Firebase Firestore.');
+  } catch (err: any) {
+    handleFirestoreError('clearAllAuditLogsFromFirestore', err);
+  }
+}
+
 export async function seedInitialEmployees(): Promise<void> {
   try {
     const batch = writeBatch(db);
-    for (const emp of INITIAL_EMPLOYEES) {
+    for (const emp of SAMPLE_TEST_EMPLOYEES) {
       const docRef = doc(db, EMPLOYEES_COLLECTION, emp.id);
       batch.set(docRef, {
         ...emp,
@@ -113,7 +138,7 @@ export async function seedInitialEmployees(): Promise<void> {
       });
     }
     await batch.commit();
-    console.log('Initial employees successfully seeded to Firebase Firestore.');
+    console.log('Sample test employees populated in Firebase Firestore.');
   } catch (err: any) {
     handleFirestoreError('seedInitialEmployees', err);
   }

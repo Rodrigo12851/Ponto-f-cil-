@@ -19,6 +19,7 @@ import {
   Key,
   Lock,
   Tablet,
+  Smartphone,
 } from 'lucide-react';
 import { processProfilePhoto } from '../utils/imageHelper';
 
@@ -27,7 +28,7 @@ interface DrawerMenuProps {
   onClose: () => void;
   activeTab: ActiveTab;
   onSelectTab: (tab: ActiveTab) => void;
-  currentEmployee: Employee;
+  currentEmployee?: Employee | null;
   employees: Employee[];
   onSelectEmployee: (emp: Employee) => void;
   isAdminView: boolean;
@@ -39,6 +40,7 @@ interface DrawerMenuProps {
   onLogout?: () => void;
   onOpenTabletKiosk?: () => void;
   onOpenFaceIdRegistration?: () => void;
+  onOpenInstallModal?: () => void;
 }
 
 export const DrawerMenu: React.FC<DrawerMenuProps> = ({
@@ -58,6 +60,7 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
   onLogout,
   onOpenTabletKiosk,
   onOpenFaceIdRegistration,
+  onOpenInstallModal,
 }) => {
   const drawerFileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -258,6 +261,25 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
             <p className="text-[10px] font-extrabold uppercase text-slate-400 px-3 mb-1 tracking-wider">
               Menu de Navegação
             </p>
+
+            {/* Install PWA Button */}
+            {onOpenInstallModal && (
+              <button
+                onClick={() => {
+                  onOpenInstallModal();
+                  onClose();
+                }}
+                className="w-full text-left px-3.5 py-2.5 my-1 rounded-xl font-bold text-xs flex items-center justify-between transition bg-slate-900 hover:bg-slate-800 text-white shadow-xs cursor-pointer border border-slate-700"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Smartphone className="w-4 h-4 text-blue-400 shrink-0" />
+                  <span>📱 Instalar Aplicativo (PWA)</span>
+                </div>
+                <span className="text-[9px] bg-blue-500/30 text-blue-300 border border-blue-400/40 font-bold px-1.5 py-0.5 rounded uppercase">
+                  App
+                </span>
+              </button>
+            )}
 
             {/* Dedicated Tablet Kiosk Button for Managers/Owners */}
             {(currentUserRole === 'GESTOR' || currentUserRole === 'PROPRIETARIO') && onOpenTabletKiosk && (

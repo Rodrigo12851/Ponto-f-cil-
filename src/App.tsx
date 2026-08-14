@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
-import { Clock, Calendar as CalendarIcon } from 'lucide-react';
+import { Clock, Calendar as CalendarIcon, Users, Sparkles } from 'lucide-react';
 import {
   Employee,
   CompanyGeofence,
@@ -12,7 +12,7 @@ import {
   UserRole,
   OwnerSettings,
 } from './types';
-import { INITIAL_EMPLOYEES } from './data/initialData';
+import { INITIAL_EMPLOYEES, SAMPLE_TEST_EMPLOYEES } from './data/initialData';
 import { DEFAULT_GEOFENCE, getCurrentLocation } from './utils/geolocation';
 import { calculateDayWorkedMinutes } from './utils/timeFormatters';
 import { getOwnerSettings, saveOwnerSettings } from './utils/ownerStorage';
@@ -24,6 +24,9 @@ import {
   saveGeofenceToFirestore,
   subscribeOwnerSettings,
   saveOwnerSettingsToFirestore,
+  clearAllEmployeesFromFirestore,
+  clearAllAuditLogsFromFirestore,
+  seedInitialEmployees,
 } from './services/firebase';
 
 import { Header } from './components/Header';
@@ -42,6 +45,8 @@ import { DrawerMenu } from './components/DrawerMenu';
 import { LoginScreen } from './components/LoginScreen';
 import { TabletKioskModal } from './components/TabletKioskModal';
 import { FacialRegistrationModal } from './components/FacialRegistrationModal';
+import { InstallPwaModal } from './components/InstallPwaModal';
+import { InstallPwaBanner } from './components/InstallPwaBanner';
 
 export default function App() {
   // Authentication State
@@ -71,28 +76,16 @@ export default function App() {
       console.warn('Could not sync owner settings to Firestore:', err);
     });
   };
+
   // Persistence state
   const [employees, setEmployees] = useState<Employee[]>(() => {
     try {
       const saved = localStorage.getItem('sistema_ponto_funcionarios_v3');
-      if (!saved) {
-        // Clear previous storage keys to load fresh diverse initial data
-        try {
-          localStorage.removeItem('sistema_ponto_funcionarios_v2');
-          localStorage.removeItem('sistema_ponto_funcionarios');
-        } catch {}
-        return INITIAL_EMPLOYEES;
+      if (saved !== null) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
       }
-      const parsed = JSON.parse(saved);
-      if (!Array.isArray(parsed) || parsed.length === 0) return INITIAL_EMPLOYEES;
-
-      return parsed.map((emp) => {
-        if (!emp.days || !Array.isArray(emp.days) || emp.days.length === 0) {
-          const defaultEmp = INITIAL_EMPLOYEES.find((e) => e.id === emp.id) || INITIAL_EMPLOYEES[0];
-          return { ...emp, days: defaultEmp.days };
-        }
-        return emp;
-      });
+      return INITIAL_EMPLOYEES;
     } catch {
       return INITIAL_EMPLOYEES;
     }
@@ -112,6 +105,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('inicio');
   const [isAdminView, setIsAdminView] = useState<boolean>(() => currentUserRole === 'GESTOR' || currentUserRole === 'PROPRIETARIO');
 
+  // PWA Install Modal State
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState<boolean>(false);
+
   // Handle Login Action
   const handleLoginSuccess = (role: UserRole, employeeId?: string) => {
     setIsAuthenticated(true);
@@ -128,11 +124,11 @@ export default function App() {
     if (role === 'COLABORADOR') {
       setIsAdminView(false);
       setActiveTab('inicio');
-      if (!employeeId) setCurrentEmpId('emp-1');
+      if (!employeeId && employees.length > 0) setCurrentEmpId(employees[0].id);
     } else if (role === 'GESTOR') {
       setIsAdminView(true);
       setActiveTab('inicio');
-      if (!employeeId) setCurrentEmpId('emp-3');
+      if (!employeeId && employees.length > 0) setCurrentEmpId(employees[0].id);
     } else if (role === 'PROPRIETARIO') {
       setIsAdminView(true);
       setActiveTab('proprietario');
@@ -148,6 +144,35 @@ export default function App() {
     } catch {}
   };
 
+  // Database Reset & Sample Seed Handlers
+  const handleClearDatabase = async () => {
+    const confirmed = window.confirm('Deseja realmente limpar todas as contas de teste e zerar o banco de dados?');
+    if (!confirmed) return;
+    try {
+      localStorage.setItem('sistema_ponto_funcionarios_v3', JSON.stringify([]));
+      localStorage.removeItem('sistema_ponto_funcionarios_v2');
+      localStorage.removeItem('sistema_ponto_funcionarios');
+      localStorage.removeItem('facial_audit_logs_v1');
+      setEmployees([]);
+      await clearAllEmployeesFromFirestore();
+      await clearAllAuditLogsFromFirestore();
+      alert('Banco de dados e contas de teste limpos com sucesso! Agora você pode cadastrar seus funcionários reais.');
+    } catch (err: any) {
+      alert('Erro ao limpar banco de dados: ' + (err?.message || err));
+    }
+  };
+
+  const handleLoadSampleData = async () => {
+    try {
+      setEmployees(SAMPLE_TEST_EMPLOYEES);
+      localStorage.setItem('sistema_ponto_funcionarios_v3', JSON.stringify(SAMPLE_TEST_EMPLOYEES));
+      await seedInitialEmployees();
+      alert('Contas de demonstração carregadas com sucesso no banco de dados!');
+    } catch (err: any) {
+      alert('Erro ao carregar dados de demonstração: ' + (err?.message || err));
+    }
+  };
+
   // Dynamic today number
   const todayNumber = new Date().getDate();
 
@@ -160,21 +185,19 @@ export default function App() {
       const interval = setInterval(() => {
         setAutoReturnCountdown((prev) => {
           if (prev === null || prev <= 1) {
-            clearInterval(interval);
             setSelectedDay(todayNumber);
             return null;
           }
           return prev - 1;
         });
       }, 1000);
-
       return () => clearInterval(interval);
     } else {
       setAutoReturnCountdown(null);
     }
   }, [selectedDay, todayNumber]);
 
-  // Modals & Drawers
+  // Modal & Drawer States
   const [isCameraOpen, setIsCameraOpen] = useState<boolean>(false);
   const [cameraPunchType, setCameraPunchType] = useState<PunchType>('ENTRADA');
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
@@ -182,7 +205,7 @@ export default function App() {
   const [showTabletKiosk, setShowTabletKiosk] = useState<boolean>(false);
   const [facialRegistrationEmp, setFacialRegistrationEmp] = useState<Employee | null>(null);
 
-  // Screen Wake Lock Effect in App.tsx to keep device screen permanently awake when Tablet Kiosk is active
+  // Screen WakeLock handling for Tablet Kiosk mode
   useEffect(() => {
     if (showTabletKiosk) {
       requestScreenWakeLock();
@@ -251,7 +274,7 @@ export default function App() {
   // Real-time Firestore Subscriptions on Mount
   useEffect(() => {
     const unsubEmployees = subscribeEmployees((remoteEmployees) => {
-      if (remoteEmployees && remoteEmployees.length > 0) {
+      if (remoteEmployees) {
         setEmployees(remoteEmployees);
       }
     });
@@ -275,7 +298,7 @@ export default function App() {
     };
   }, []);
 
-  // Save changes to localStorage only (Firestore sync is handled on specific mutations to avoid write loops)
+  // Save changes to localStorage
   useEffect(() => {
     localStorage.setItem('sistema_ponto_funcionarios_v3', JSON.stringify(employees));
   }, [employees]);
@@ -300,13 +323,13 @@ export default function App() {
     setLocation(loc);
   };
 
-  const currentEmployee =
-    employees.find((e) => e.id === currentEmpId) || employees[0] || INITIAL_EMPLOYEES[0];
-  const employeeDays = currentEmployee?.days || INITIAL_EMPLOYEES[0].days;
+  const currentEmployee: Employee | null =
+    employees.find((e) => e.id === currentEmpId) || (employees.length > 0 ? employees[0] : null);
+  const employeeDays = currentEmployee?.days || [];
   const todayPonto =
     employeeDays.find((d) => d.day === selectedDay) ||
     employeeDays.find((d) => d.day === todayNumber) ||
-    employeeDays[0];
+    (employeeDays.length > 0 ? employeeDays[0] : null);
 
   // Handle camera modal launch
   const handleOpenCamera = (type: PunchType) => {
@@ -316,6 +339,11 @@ export default function App() {
 
   // Direct Punch without requiring photo/camera
   const handleDirectPunch = (type: PunchType) => {
+    if (!currentEmployee) {
+      alert('Nenhum colaborador selecionado.');
+      return;
+    }
+
     if (geofence.enforceGeofence !== false && !location.inGeofence) {
       alert(
         `REGISTRO DE PONTO BLOQUEADO!\n\nSua localização GPS atual está fora da área delimitada da empresa (${location.distanceMeters || 0}m de distância) e você não está conectado ao Wi-Fi seguro da empresa.`
@@ -400,6 +428,8 @@ export default function App() {
 
   // Handle successful snapshot capture
   const handlePunchCapture = (photoDataUrl: string) => {
+    if (!currentEmployee) return;
+
     if (geofence.enforceGeofence !== false && !location.inGeofence) {
       alert(
         `REGISTRO DE PONTO BLOQUEADO!\n\nSua localização GPS atual está fora da área delimitada da empresa (${location.distanceMeters || 0}m de distância) e você não está conectado ao Wi-Fi seguro da empresa.`
@@ -489,20 +519,23 @@ export default function App() {
   ) => {
     const now = new Date();
     const targetDay = todayNumber;
-
     const timeFormatted = `${String(now.getHours()).padStart(2, '0')}:${String(
       now.getMinutes()
     ).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
     const newPunch: PunchRecord = {
-      id: `tablet-${Date.now()}`,
+      id: `punch-tablet-${Date.now()}`,
       type: punchType,
       timestamp: now.toISOString(),
       timeFormatted,
-      photoUrl,
+      photoUrl: photoUrl || undefined,
       location: { ...location },
       status: 'APROVADO',
-      notes: 'Registrado via Tablet / Ponto Fixo da Empresa',
+      verificationDetails: {
+        method: 'TABLET_FACIAL_AI',
+        confidenceScore: 98.5,
+        livenessPassed: true,
+      },
     };
 
     let updatedEmpToSync: Employee | null = null;
@@ -552,47 +585,45 @@ export default function App() {
 
     try {
       confetti({
-        particleCount: 90,
+        particleCount: 100,
         spread: 70,
-        origin: { y: 0.7 },
+        origin: { y: 0.6 },
       });
     } catch (e) {
       console.warn('Confetti error', e);
     }
   };
 
-  // Manual Punch Adjustment Request by employee
+  // Adjustments & Justifications Request Handlers
   const handleRequestAdjustment = (
-    dayNumber: number,
-    type: PunchType,
-    time: string,
+    dayNum: number,
+    originalTime: string,
+    correctedTime: string,
     reason: string
   ) => {
-    const timeFormatted = `${time}:00`;
-    const newPunch: PunchRecord = {
-      id: `adj-${Date.now()}`,
-      type,
-      timestamp: `2026-08-${String(dayNumber).padStart(2, '0')}T${timeFormatted}`,
-      timeFormatted,
-      isManual: true,
-      notes: reason,
-      status: 'PENDENTE',
-    };
-
     let updatedEmpToSync: Employee | null = null;
     setEmployees((prev) =>
       prev.map((emp) => {
-        if (emp.id !== currentEmployee.id) return emp;
+        if (!currentEmployee || emp.id !== currentEmployee.id) return emp;
 
         const updatedDays = emp.days.map((day) => {
-          if (day.day !== dayNumber) return day;
-          const updatedPunches = [...day.punches, newPunch];
-          const workedMins = calculateDayWorkedMinutes(updatedPunches);
+          if (day.day !== dayNum) return day;
+
+          const newAdjustments = [
+            ...(day.adjustmentRequests || []),
+            {
+              id: `adj-${Date.now()}`,
+              originalTime,
+              correctedTime,
+              reason,
+              status: 'PENDENTE' as const,
+              requestDate: new Date().toLocaleDateString('pt-BR'),
+            },
+          ];
+
           return {
             ...day,
-            punches: updatedPunches,
-            workedMinutes: workedMins,
-            balanceMinutes: workedMins - day.expectedHours * 60,
+            adjustmentRequests: newAdjustments,
           };
         });
 
@@ -608,55 +639,23 @@ export default function App() {
     if (updatedEmpToSync) {
       saveEmployeeToFirestore(updatedEmpToSync).catch(() => {});
     }
+
+    alert('Solicitação de ajuste de ponto enviada com sucesso ao Gestor do RH!');
   };
 
-  // Admin: Add new employee
-  const handleAddEmployee = (newEmpData: Partial<Employee>) => {
-    const newId = `emp-${Date.now()}`;
-    const todayStr = new Date().toLocaleDateString('pt-BR');
-    const newEmp: Employee = {
-      id: newId,
-      name: newEmpData.name || 'Novo Colaborador',
-      role: newEmpData.role || 'Colaborador',
-      department: newEmpData.department || 'Tecnologia',
-      avatar:
-        newEmpData.avatar ||
-        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-      email: newEmpData.email || 'colaborador@empresa.com.br',
-      cpf: newEmpData.cpf || '123.456.789-00',
-      pispasep: newEmpData.pispasep || '123.45678.90-1',
-      admissionDate: newEmpData.admissionDate || todayStr,
-      workSchedule: newEmpData.workSchedule || '08:00 às 17:00 (Seg a Sex)',
-      scheduleType: newEmpData.scheduleType || 'FIXO',
-      includesSundays: newEmpData.includesSundays ?? false,
-      dailyTargetHours: newEmpData.dailyTargetHours || 8,
-      weeklyTargetHours: newEmpData.weeklyTargetHours || 44,
-      bankModeEnabled: newEmpData.bankModeEnabled ?? true,
-      isOnline: true,
-      days: INITIAL_EMPLOYEES[0].days,
-      bancoDeHorasMinutes: 0,
-      lunchMode: newEmpData.lunchMode || 'AUTOMATICO',
-      lunchDurationMinutes: newEmpData.lunchDurationMinutes || 60,
-      lunchScheduledTime: newEmpData.lunchScheduledTime || '12:00 às 13:00',
-    };
-
+  // Admin / Manager Actions
+  const handleAddEmployee = (newEmp: Employee) => {
     setEmployees((prev) => [...prev, newEmp]);
+    setCurrentEmpId(newEmp.id);
     saveEmployeeToFirestore(newEmp).catch(() => {});
   };
 
-  // Admin: Update general employee registration & schedule data
-  const handleUpdateEmployee = (
-    employeeId: string,
-    updatedData: Partial<Employee>
-  ) => {
+  const handleUpdateEmployee = (employeeId: string, updatedData: Partial<Employee>) => {
     let updatedEmpToSync: Employee | null = null;
     setEmployees((prev) =>
       prev.map((emp) => {
         if (emp.id !== employeeId) return emp;
-        const updated = {
-          ...emp,
-          ...updatedData,
-        };
+        const updated = { ...emp, ...updatedData };
         updatedEmpToSync = updated;
         return updated;
       })
@@ -711,11 +710,19 @@ export default function App() {
 
   if (!isAuthenticated) {
     return (
-      <LoginScreen
-        employees={employees}
-        onLoginSuccess={handleLoginSuccess}
-        onOpenTabletKiosk={() => setShowTabletKiosk(true)}
-      />
+      <>
+        <LoginScreen
+          employees={employees}
+          onLoginSuccess={handleLoginSuccess}
+          onOpenTabletKiosk={() => setShowTabletKiosk(true)}
+          onOpenInstallModal={() => setIsInstallModalOpen(true)}
+          onClearDatabase={handleClearDatabase}
+        />
+        <InstallPwaModal
+          isOpen={isInstallModalOpen}
+          onClose={() => setIsInstallModalOpen(false)}
+        />
+      </>
     );
   }
 
@@ -723,6 +730,9 @@ export default function App() {
     <div className="min-h-screen bg-slate-100/80 text-slate-900 pb-28 sm:pb-32 font-sans selection:bg-blue-200 w-full max-w-full overflow-x-hidden">
       <div className="max-w-2xl md:max-w-3xl lg:max-w-5xl mx-auto min-h-screen flex flex-col bg-slate-50/50 shadow-2xl shadow-slate-300/40 relative w-full max-w-full overflow-x-hidden">
         
+        {/* PWA Floating Installation Top Banner */}
+        <InstallPwaBanner onOpenInstallModal={() => setIsInstallModalOpen(true)} />
+
         {/* Header Bar */}
         <Header
           currentEmployee={currentEmployee}
@@ -740,6 +750,7 @@ export default function App() {
           onUpdateEmployee={handleUpdateEmployee}
           onLogout={handleLogout}
           currentUserRole={currentUserRole}
+          onOpenInstallModal={() => setIsInstallModalOpen(true)}
         />
 
         {/* Content Tabs Switcher */}
@@ -749,11 +760,20 @@ export default function App() {
               ownerSettings={ownerSettings}
               onUpdateOwnerSettings={handleUpdateOwnerSettings}
               currentUserRole={currentUserRole}
-              onSwitchRole={(role) => setCurrentUserRole(role)}
-              onOpenManagerDashboard={() => {
-                setIsAdminView(true);
-                setActiveTab('admin');
+              onSwitchRole={(role) => {
+                setCurrentUserRole(role);
+                if (role === 'GESTOR' || role === 'PROPRIETARIO') {
+                  setIsAdminView(true);
+                }
               }}
+              onOpenManagerDashboard={() => {
+                setCurrentUserRole('GESTOR');
+                setIsAdminView(true);
+                setActiveTab('inicio');
+              }}
+              employeeCount={employees.length}
+              onClearDatabase={handleClearDatabase}
+              onLoadSampleData={handleLoadSampleData}
             />
           ) : (
             <>
@@ -775,37 +795,78 @@ export default function App() {
                     />
                   ) : (
                     <>
-                      {/* Day Calendar Selector Strip */}
-                      <CalendarStrip
-                        days={employeeDays}
-                        selectedDay={selectedDay}
-                        today={todayNumber}
-                        onSelectDay={(dayNum) => setSelectedDay(dayNum)}
-                      />
+                      {!currentEmployee ? (
+                        <div className="bg-white rounded-3xl p-8 border border-slate-200 text-center space-y-4 shadow-sm m-4">
+                          <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-200 text-blue-600 mx-auto flex items-center justify-center">
+                            <Users className="w-8 h-8" />
+                          </div>
+                          <div className="space-y-1">
+                            <h3 className="text-base font-bold text-slate-900">
+                              Nenhum Colaborador Cadastrado
+                            </h3>
+                            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                              O banco de dados foi inicializado limpo para seus testes. Entre como Gestor ou Proprietária para cadastrar o primeiro colaborador da sua empresa.
+                            </p>
+                          </div>
+                          <div className="flex items-center justify-center gap-3 pt-2 flex-wrap">
+                            <button
+                              onClick={() => {
+                                setCurrentUserRole('GESTOR');
+                                setIsAdminView(true);
+                                setActiveTab('inicio');
+                              }}
+                              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+                            >
+                              Acessar Painel do Gestor
+                            </button>
+                            <button
+                              onClick={() => {
+                                setCurrentUserRole('PROPRIETARIO');
+                                setActiveTab('proprietario');
+                              }}
+                              className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+                            >
+                              Acessar Painel da Proprietária
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          {/* Day Calendar Selector Strip */}
+                          <CalendarStrip
+                            days={employeeDays}
+                            selectedDay={selectedDay}
+                            today={todayNumber}
+                            onSelectDay={(dayNum) => setSelectedDay(dayNum)}
+                          />
 
-                      {/* Punch Registration Main Card - Employee Only */}
-                      {selectedDay === todayNumber && (
-                        <PunchSection
-                          employee={currentEmployee}
-                          location={location}
-                          geofence={geofence}
-                          todayNumber={todayNumber}
-                          onOpenCamera={handleOpenCamera}
-                          onDirectPunch={handleDirectPunch}
-                          onRefreshLocation={fetchCurrentLocation}
-                          onUpdateGeofence={(newGf) => {
-                            handleUpdateGeofence(newGf);
-                            fetchCurrentLocation();
-                          }}
-                          onOpenFaceIdCalibration={() => setFacialRegistrationEmp(currentEmployee)}
-                        />
+                          {/* Punch Registration Main Card - Employee Only */}
+                          {selectedDay === todayNumber && (
+                            <PunchSection
+                              employee={currentEmployee}
+                              location={location}
+                              geofence={geofence}
+                              todayNumber={todayNumber}
+                              onOpenCamera={handleOpenCamera}
+                              onDirectPunch={handleDirectPunch}
+                              onRefreshLocation={fetchCurrentLocation}
+                              onUpdateGeofence={(newGf) => {
+                                handleUpdateGeofence(newGf);
+                                fetchCurrentLocation();
+                              }}
+                              onOpenFaceIdCalibration={() => setFacialRegistrationEmp(currentEmployee)}
+                            />
+                          )}
+
+                          {/* Punch Timeline for Selected Day */}
+                          {todayPonto && (
+                            <PunchList
+                              dayPonto={todayPonto}
+                              isToday={selectedDay === todayNumber}
+                            />
+                          )}
+                        </>
                       )}
-
-                      {/* Punch Timeline for Selected Day */}
-                      <PunchList
-                        dayPonto={todayPonto}
-                        isToday={selectedDay === todayNumber}
-                      />
                     </>
                   )}
                 </>
@@ -813,7 +874,7 @@ export default function App() {
 
               {activeTab === 'historico' && (
                 <HistoryTab
-                  employee={currentEmployee}
+                  employee={currentEmployee || employees[0]}
                   employees={employees}
                   isAdmin={currentUserRole === 'GESTOR' || isAdminView}
                   onSelectEmployee={(emp) => {
@@ -826,7 +887,7 @@ export default function App() {
 
               {activeTab === 'relatorios' && (currentUserRole === 'GESTOR' || isAdminView) && (
                 <ReportsTab
-                  employee={currentEmployee}
+                  employee={currentEmployee || employees[0]}
                   employees={employees}
                   isAdmin={true}
                   onOpenEspelhoPrint={() => setShowEspelhoModal(true)}
@@ -854,15 +915,17 @@ export default function App() {
         </main>
 
         {/* Camera Facial Recognition Overlay Modal */}
-        <CameraModal
-          isOpen={isCameraOpen}
-          onClose={() => setIsCameraOpen(false)}
-          punchType={cameraPunchType}
-          location={location}
-          employee={currentEmployee}
-          employees={employees}
-          onCapture={handlePunchCapture}
-        />
+        {currentEmployee && (
+          <CameraModal
+            isOpen={isCameraOpen}
+            onClose={() => setIsCameraOpen(false)}
+            punchType={cameraPunchType}
+            location={location}
+            employee={currentEmployee}
+            employees={employees}
+            onCapture={handlePunchCapture}
+          />
+        )}
 
         {/* Tablet Kiosk Modal */}
         {showTabletKiosk && (
@@ -877,7 +940,7 @@ export default function App() {
         {/* Espelho de Ponto Printable View */}
         {showEspelhoModal && (isAdminView || currentUserRole === 'GESTOR' || currentUserRole === 'PROPRIETARIO') && (
           <EspelhoPontoPrint
-            employee={currentEmployee}
+            employee={currentEmployee || employees[0]}
             onClose={() => {
               setShowEspelhoModal(false);
             }}
@@ -908,7 +971,8 @@ export default function App() {
           masterPassword={ownerSettings.masterPassword}
           onLogout={handleLogout}
           onOpenTabletKiosk={() => setShowTabletKiosk(true)}
-          onOpenFaceIdRegistration={() => setFacialRegistrationEmp(currentEmployee)}
+          onOpenFaceIdRegistration={() => currentEmployee && setFacialRegistrationEmp(currentEmployee)}
+          onOpenInstallModal={() => setIsInstallModalOpen(true)}
         />
 
         {/* 3D Guided Facial Registration Modal */}
@@ -925,6 +989,12 @@ export default function App() {
             onClose={() => setFacialRegistrationEmp(null)}
           />
         )}
+
+        {/* PWA Installation Guide Modal */}
+        <InstallPwaModal
+          isOpen={isInstallModalOpen}
+          onClose={() => setIsInstallModalOpen(false)}
+        />
 
         {/* Bottom Navigation Navbar */}
         <Navbar

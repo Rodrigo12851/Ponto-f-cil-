@@ -1,11 +1,11 @@
 import React, { useRef, useState } from 'react';
-import { Shield, User, Clock, MapPin, Bell, Menu, Sparkles, Camera, Check, Loader2, LogOut } from 'lucide-react';
+import { Shield, User, Clock, MapPin, Menu, Sparkles, Camera, Check, Loader2, LogOut, Smartphone } from 'lucide-react';
 import { Employee, UserRole } from '../types';
 import { getBrazilianFullDate } from '../utils/timeFormatters';
 import { processProfilePhoto } from '../utils/imageHelper';
 
 interface HeaderProps {
-  currentEmployee: Employee;
+  currentEmployee?: Employee | null;
   employees: Employee[];
   onSelectEmployee: (emp: Employee) => void;
   isAdminView: boolean;
@@ -14,6 +14,7 @@ interface HeaderProps {
   onUpdateEmployee?: (employeeId: string, updatedData: Partial<Employee>) => void;
   onLogout?: () => void;
   currentUserRole?: UserRole;
+  onOpenInstallModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -26,6 +27,7 @@ export const Header: React.FC<HeaderProps> = ({
   onUpdateEmployee,
   onLogout,
   currentUserRole = 'COLABORADOR',
+  onOpenInstallModal,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -33,7 +35,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !currentEmployee) return;
 
     try {
       setIsUploading(true);
@@ -50,6 +52,7 @@ export const Header: React.FC<HeaderProps> = ({
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
+
   return (
     <header
       className={`relative text-white transition-colors duration-300 ${
@@ -58,65 +61,78 @@ export const Header: React.FC<HeaderProps> = ({
           : 'bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-700 shadow-lg shadow-blue-500/10'
       } rounded-b-2xl p-4 md:p-6 mb-2`}
     >
-      <div className="max-w-7xl mx-auto">
-        {/* Top bar with logo, hamburger menu, and admin switch */}
-        <div className="flex items-center justify-between gap-2 mb-3 min-w-0">
-          <div className="flex items-center gap-2 min-w-0">
+      <div className="flex flex-col gap-4">
+        {/* Top bar: Brand & Action icons */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
             <button
               onClick={onOpenMenu}
-              className="p-1.5 sm:p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition cursor-pointer backdrop-blur-md shrink-0"
-              title="Menu Principal"
+              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition backdrop-blur-md cursor-pointer flex items-center justify-center"
+              aria-label="Abrir Menu"
             >
               <Menu className="w-5 h-5" />
             </button>
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white/20 backdrop-blur-md flex items-center justify-center font-bold text-white text-xs sm:text-sm shadow-inner shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-white text-blue-700 font-extrabold flex items-center justify-center text-sm shadow-md">
                 PF
               </div>
-              <div className="min-w-0">
-                <h1 className="text-sm sm:text-base md:text-lg font-bold tracking-tight leading-none flex items-center gap-1.5 truncate">
-                  Ponto Facial
-                  {isAdminView && (
-                    <span className="text-[9px] sm:text-[10px] uppercase font-bold bg-amber-400 text-slate-950 px-1.5 py-0.5 rounded-full tracking-wider flex items-center gap-1 shrink-0">
-                      <Shield className="w-2.5 h-2.5 fill-slate-950" /> Admin
-                    </span>
-                  )}
+              <div>
+                <h1 className="text-base sm:text-lg font-black tracking-tight leading-tight">
+                  PONTO FACIAL
                 </h1>
-                <p className="text-[10px] sm:text-[11px] text-blue-100/80 font-medium truncate hidden sm:block">
-                  Gestão Inteligente de Equipe
-                </p>
+                <span className="text-[10px] sm:text-xs text-blue-100 opacity-90 font-medium">
+                  {getBrazilianFullDate()}
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Logout Action */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-2">
+            {/* Install PWA button */}
+            {onOpenInstallModal && (
+              <button
+                type="button"
+                onClick={onOpenInstallModal}
+                className="px-2.5 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold border border-white/20 transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                title="Instalar aplicativo no celular ou computador"
+              >
+                <Smartphone className="w-3.5 h-3.5 text-amber-300" />
+                <span className="hidden sm:inline">Instalar App</span>
+              </button>
+            )}
+
+            {/* Logout button */}
             {onLogout && (
               <button
                 onClick={onLogout}
-                className="px-2 sm:px-2.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold bg-rose-600/80 hover:bg-rose-600 text-white border border-rose-400/30 transition shadow-sm cursor-pointer shrink-0 flex items-center gap-1"
-                title="Sair / Trocar Conta"
+                className="p-2 rounded-xl bg-white/10 hover:bg-rose-500/30 text-white hover:text-rose-200 border border-white/10 transition cursor-pointer flex items-center gap-1 text-xs font-bold"
+                title="Sair da Conta / Trocar Usuário"
               >
-                <LogOut className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">Sair</span>
+                <LogOut className="w-4 h-4" />
+                <span className="hidden sm:inline">Sair</span>
               </button>
             )}
           </div>
         </div>
 
-        {/* User Info Header based on currentUserRole */}
+        {/* User / Mode Profile Bar */}
         {currentUserRole === 'PROPRIETARIO' ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-amber-500/30 min-w-0">
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-indigo-700/60 min-w-0">
             <div className="min-w-0">
-              <h2 className="text-xs sm:text-sm md:text-base font-extrabold leading-tight flex items-center gap-2 text-amber-300 truncate">
-                <span>👑 Acesso Master do Proprietário</span>
-              </h2>
-              <p className="text-[11px] sm:text-xs text-amber-100/80 font-medium truncate">
-                Gestão de senhas mestras e credenciais de acesso dos gestores da empresa
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-black bg-amber-400 text-slate-950 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                  👑 Master
+                </span>
+                <h2 className="text-xs sm:text-sm md:text-base font-extrabold leading-tight truncate">
+                  Painel do Proprietário
+                </h2>
+              </div>
+              <p className="text-[11px] sm:text-xs text-indigo-200 font-medium truncate mt-0.5">
+                Controle Geral da Empresa, Gestão de Gestores & Configurações Globais
               </p>
             </div>
-            <div className="text-[10px] sm:text-xs text-amber-200 font-bold bg-amber-950/60 px-3 py-1 rounded-xl border border-amber-500/40 flex items-center gap-1.5 shrink-0">
-              <Shield className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <div className="text-[10px] sm:text-xs text-amber-200 font-bold bg-white/10 px-2.5 py-1 rounded-xl border border-white/10 flex items-center gap-1.5 shrink-0">
+              <Shield className="w-3.5 h-3.5 text-amber-300" />
               <span>Sede Principal</span>
             </div>
           </div>
@@ -135,7 +151,7 @@ export const Header: React.FC<HeaderProps> = ({
               <span>{employees.filter((e) => e.isOnline).length} de {employees.length} colaboradores ativos</span>
             </div>
           </div>
-        ) : (
+        ) : currentEmployee ? (
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/10 min-w-0">
             <div className="flex items-center gap-2.5 min-w-0">
               {/* Profile Avatar with Camera Upload Badge */}
@@ -198,8 +214,17 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             <div className="text-right text-[10px] sm:text-xs text-blue-100/90 font-medium flex items-center gap-1 bg-black/10 px-2.5 py-1 rounded-xl border border-white/10 shrink-0">
-              <Clock className="w-3 h-3 text-blue-200 shrink-0" />
-              <span className="truncate">{getBrazilianFullDate()}</span>
+              <MapPin className="w-3.5 h-3.5 text-blue-200" />
+              <span>Sede Principal</span>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/10 min-w-0">
+            <div className="text-xs text-blue-100">
+              <span className="font-bold text-white">Banco de Dados Limpo</span> • Nenhum colaborador cadastrado
+            </div>
+            <div className="text-right text-[10px] text-blue-200 font-semibold">
+              Pronto para novos cadastros
             </div>
           </div>
         )}

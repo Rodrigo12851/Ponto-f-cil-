@@ -28,6 +28,9 @@ interface OwnerPanelProps {
   currentUserRole: UserRole;
   onSwitchRole: (role: UserRole, managerId?: string) => void;
   onOpenManagerDashboard: () => void;
+  employeeCount?: number;
+  onClearDatabase?: () => void;
+  onLoadSampleData?: () => void;
 }
 
 export const OwnerPanel: React.FC<OwnerPanelProps> = ({
@@ -36,6 +39,9 @@ export const OwnerPanel: React.FC<OwnerPanelProps> = ({
   currentUserRole,
   onSwitchRole,
   onOpenManagerDashboard,
+  employeeCount = 0,
+  onClearDatabase,
+  onLoadSampleData,
 }) => {
   // Modal state for Add/Edit Manager
   const [showManagerModal, setShowManagerModal] = useState<boolean>(false);
@@ -318,6 +324,38 @@ export const OwnerPanel: React.FC<OwnerPanelProps> = ({
             <p className="font-bold text-emerald-300 text-xs mt-0.5 flex items-center gap-1">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Regras Ativas & Protegido
             </p>
+          </div>
+        </div>
+
+        {/* Database Controls */}
+        <div className="pt-2 border-t border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+          <div className="text-slate-300 font-medium">
+            Colaboradores no Banco: <strong className="text-white font-mono">{employeeCount} cadastrados</strong>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {onClearDatabase && (
+              <button
+                type="button"
+                onClick={onClearDatabase}
+                className="px-3 py-1.5 bg-rose-600/80 hover:bg-rose-600 text-white font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                title="Apagar todas as contas de teste e zerar banco de dados"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Zerar Banco de Dados</span>
+              </button>
+            )}
+            {onLoadSampleData && employeeCount === 0 && (
+              <button
+                type="button"
+                onClick={onLoadSampleData}
+                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer border border-white/20"
+                title="Carregar contas de demonstração"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>Carregar Dados de Demonstração</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

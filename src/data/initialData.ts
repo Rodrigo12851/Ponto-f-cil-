@@ -203,7 +203,11 @@ function generateDaysForEmployee(
   return days;
 }
 
-export const INITIAL_EMPLOYEES: Employee[] = [
+// Default initial employees is completely clean (empty) for fresh production testing
+export const INITIAL_EMPLOYEES: Employee[] = [];
+
+// Optional sample employee data for manual seeding if requested
+export const SAMPLE_TEST_EMPLOYEES: Employee[] = [
   {
     id: 'emp-1',
     name: 'Rodrigo dos Santos Souza',

@@ -19,6 +19,13 @@ export interface PunchRecord {
   timestamp: string; // ISO string or HH:mm
   timeFormatted: string; // HH:MM:SS
   photoUrl?: string;
+  photos?: string[];
+  verificationDetails?: {
+    method?: string;
+    confidenceScore?: number;
+    livenessPassed?: boolean;
+    [key: string]: any;
+  };
   location?: LocationData;
   isManual?: boolean;
   notes?: string;
@@ -36,6 +43,14 @@ export interface DayPonto {
   balanceMinutes: number; // worked - expected (+/- minutes)
   delayMinutes: number;
   notes?: string;
+  adjustmentRequests?: Array<{
+    id: string;
+    originalTime: string;
+    correctedTime: string;
+    reason: string;
+    status: 'PENDENTE' | 'APROVADO' | 'REJEITADO';
+    requestDate: string;
+  }>;
 }
 
 export type LunchMode = 'AUTOMATICO' | 'MANUAL';

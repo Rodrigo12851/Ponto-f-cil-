@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="50%" stop-color="#312e81"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="50%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#a855f7"/>
+    </linearGradient>
+    <linearGradient id="faceGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f8fafc"/>
+      <stop offset="100%" stop-color="#cbd5e1"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- App Icon Background -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)"/>
+  
+  <!-- Outer Glow Ring -->
+  <circle cx="256" cy="256" r="190" fill="none" stroke="url(#accentGrad)" stroke-width="8" stroke-dasharray="16 12" opacity="0.6"/>
+  <circle cx="256" cy="256" r="160" fill="none" stroke="#6366f1" stroke-width="4" opacity="0.4"/>
+  
+  <!-- Biometric Scanner Corners -->
+  <!-- Top Left -->
+  <path d="M 136 186 L 136 146 Q 136 136 146 136 L 186 136" fill="none" stroke="#38bdf8" stroke-width="12" stroke-linecap="round"/>
+  <!-- Top Right -->
+  <path d="M 326 136 L 366 136 Q 376 136 376 146 L 376 186" fill="none" stroke="#38bdf8" stroke-width="12" stroke-linecap="round"/>
+  <!-- Bottom Left -->
+  <path d="M 136 326 L 136 366 Q 136 376 146 376 L 186 376" fill="none" stroke="#38bdf8" stroke-width="12" stroke-linecap="round"/>
+  <!-- Bottom Right -->
+  <path d="M 326 376 L 366 376 Q 376 376 376 366 L 376 326" fill="none" stroke="#38bdf8" stroke-width="12" stroke-linecap="round"/>
+
+  <!-- Center Face / Biometric Shield -->
+  <!-- Head outline -->
+  <circle cx="256" cy="220" r="60" fill="none" stroke="url(#faceGrad)" stroke-width="10"/>
+  <!-- Eyes -->
+  <circle cx="236" cy="214" r="7" fill="#38bdf8"/>
+  <circle cx="276" cy="214" r="7" fill="#38bdf8"/>
+  <!-- Smile / Chin line -->
+  <path d="M 242 244 Q 256 256 270 244" fill="none" stroke="#38bdf8" stroke-width="6" stroke-linecap="round"/>
+  
+  <!-- Shoulders / Torso -->
+  <path d="M 176 344 C 176 295, 336 295, 336 344" fill="none" stroke="url(#faceGrad)" stroke-width="10" stroke-linecap="round"/>
+  
+  <!-- Verification Badge Checkmark -->
+  <circle cx="340" cy="340" r="34" fill="#10b981" stroke="#0f172a" stroke-width="6"/>
+  <path d="M 326 340 L 336 350 L 354 332" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Laser scan line -->
+  <line x1="140" y1="256" x2="372" y2="256" stroke="#38bdf8" stroke-width="4" stroke-linecap="round" opacity="0.8"/>
+</svg>

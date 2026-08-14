@@ -20,7 +20,8 @@ import {
   Layers,
   RotateCcw,
   Zap,
-  Volume2
+  AlertCircle,
+  Eye
 } from 'lucide-react';
 import { processProfilePhoto } from '../utils/imageHelper';
 import { estimateHeadPose } from '../utils/faceBiometrics';
@@ -35,8 +36,8 @@ interface CalibrationStep {
   id: 'CENTER' | 'LEFT' | 'RIGHT' | 'UP' | 'DOWN';
   title: string;
   subtitle: string;
-  icon: any;
   angleHint: string;
+  icon: any;
 }
 
 const CALIBRATION_STEPS: CalibrationStep[] = [
@@ -44,36 +45,36 @@ const CALIBRATION_STEPS: CalibrationStep[] = [
     id: 'CENTER',
     title: '1. Rosto Frontal (Centro)',
     subtitle: 'Olhe diretamente para a lente da câmera com expressão natural.',
-    icon: Dot,
     angleHint: 'Mantenha o rosto centralizado no visor',
+    icon: Dot,
   },
   {
     id: 'LEFT',
     title: '2. Vire para a Esquerda',
     subtitle: 'Gire suavemente o rosto para o seu lado esquerdo.',
-    icon: ArrowLeft,
     angleHint: 'Vire o rosto para a esquerda ⬅️',
+    icon: ArrowLeft,
   },
   {
     id: 'RIGHT',
     title: '3. Vire para a Direita',
     subtitle: 'Gire suavemente o rosto para o seu lado direito.',
-    icon: ArrowRight,
     angleHint: 'Vire o rosto para a direita ➡️',
+    icon: ArrowRight,
   },
   {
     id: 'UP',
     title: '4. Incline para Cima',
     subtitle: 'Eleve o queixo e olhe levemente para cima.',
-    icon: ArrowUp,
     angleHint: 'Incline a cabeça para cima ⬆️',
+    icon: ArrowUp,
   },
   {
     id: 'DOWN',
     title: '5. Incline para Baixo',
     subtitle: 'Abaixe levemente a cabeça mantendo os olhos visíveis.',
-    icon: ArrowDown,
     angleHint: 'Incline a cabeça para baixo ⬇️',
+    icon: ArrowDown,
   },
 ];
 
@@ -82,7 +83,6 @@ export const FacialRegistrationModal: React.FC<FacialRegistrationModalProps> = (
   onSavePhotos,
   onClose,
 }) => {
-  // Existing registered photos
   const existing = employee.facialPhotos || [];
   const [photos, setPhotos] = useState<string[]>([
     existing[0] || employee.avatar || '',
@@ -92,18 +92,14 @@ export const FacialRegistrationModal: React.FC<FacialRegistrationModalProps> = (
     existing[4] || '',
   ]);
 
-  // Mode: 'GUIDED_3D' (interactive movement calibration) or 'MANUAL_GRID' (slot view)
   const [mode, setMode] = useState<'GUIDED_3D' | 'MANUAL_GRID'>('GUIDED_3D');
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
-  const [isCalibrating, setIsCalibrating] = useState<boolean>(true);
-  const [isAutoCapturePending, setIsAutoCapturePending] = useState<boolean>(false);
   const [detectedPoseAngle, setDetectedPoseAngle] = useState<string>('CENTER');
   const [isCompleted, setIsCompleted] = useState<boolean>(false);
-
-  // Manual slot state
   const [activeManualSlot, setActiveManualSlot] = useState<number | null>(null);
 
-  // Camera streams
+  // Camera state & streams
+  const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -114,8 +110,8 @@ export const FacialRegistrationModal: React.FC<FacialRegistrationModalProps> = (
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
 
-  // Audio cues
-  const playSound = useCallback((type: 'beep' | 'success' | 'shutter' | 'complete') => {
+  // Audio effects
+  const playSound = useCallback((type: 'shutter' | 'success' | 'complete') => {
     try {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const ctx = new AudioCtx();
@@ -134,9 +130,9 @@ export const FacialRegistrationModal: React.FC<FacialRegistrationModalProps> = (
         osc.stop(ctx.currentTime + 0.1);
       } else if (type === 'success') {
         osc.type = 'triangle';
-        osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
-        osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.08); // E5
-        osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.16); // G5
+        osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+        osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.08);
+        osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.16);
         gain.gain.setValueAtTime(0.2, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
         osc.connect(gain);
@@ -157,134 +153,157 @@ export const FacialRegistrationModal: React.FC<FacialRegistrationModalProps> = (
         osc.stop(ctx.currentTime + 0.6);
       }
     } catch (e) {
-      // Audio not supported
+      // Ignore if web audio blocked
     }
   }, []);
 
-  // Initialize camera
-  useEffect(() => {
-    let stream: MediaStream | null = null;
+  const stopCamera = useCallback(() => {
+    if (mediaStream) {
+      mediaStream.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch (e) {}
+      });
+      setMediaStream(null);
+    }
     setIsCameraActive(false);
-    setCameraError(null);
+  }, [mediaStream]);
 
-    if (navigator?.mediaDevices?.getUserMedia) {
-      navigator.mediaDevices
-        .getUserMedia({
-          video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 640 } },
-          audio: false,
-        })
-        .then((s) => {
-          stream = s;
-          setIsCameraActive(true);
-          if (videoRef.current) {
-            videoRef.current.srcObject = s;
-            videoRef.current.play().catch(() => {});
-          }
-        })
-        .catch((err) => {
-          console.warn('Camera error in registration:', err);
-          setCameraError('Não foi possível acessar a webcam. Use o modo de envio por arquivo.');
-        });
-    } else {
-      setCameraError('Webcam não suportada neste dispositivo.');
+  const startCamera = useCallback(async () => {
+    setCameraError(null);
+    setIsCameraActive(false);
+
+    if (!navigator?.mediaDevices?.getUserMedia) {
+      setCameraError('Acesso à câmera não suportado neste navegador.');
+      return;
     }
 
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
+    try {
+      let stream: MediaStream | null = null;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        });
+      } catch (err1) {
+        console.warn('Ideal constraints failed, attempting fallback...', err1);
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user' },
+            audio: false,
+          });
+        } catch (err2) {
+          console.warn('FacingMode fallback failed, attempting basic stream...', err2);
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+        }
       }
+
+      if (stream) {
+        setMediaStream(stream);
+        setIsCameraActive(true);
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+        }
+      }
+    } catch (err: any) {
+      console.error('Camera access error in 3D Registration:', err);
+      setIsCameraActive(false);
+      setCameraError('Não foi possível iniciar a câmera. Verifique as permissões de vídeo do seu navegador.');
+    }
+  }, []);
+
+  // Initialize camera on mount
+  useEffect(() => {
+    startCamera();
+
+    return () => {
+      stopCamera();
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, []);
+  }, [startCamera, stopCamera]);
+
+  // Bind video element whenever mediaStream or mode updates
+  useEffect(() => {
+    if (mediaStream && videoRef.current) {
+      if (videoRef.current.srcObject !== mediaStream) {
+        videoRef.current.srcObject = mediaStream;
+        videoRef.current.play().catch(() => {});
+      }
+    }
+  }, [mediaStream, mode, isCompleted]);
 
   // Capture snapshot helper
   const captureCurrentAngleSnapshot = useCallback(async (slotIndex: number) => {
     if (!videoRef.current) return null;
     setFlashEffect(true);
-    setTimeout(() => setFlashEffect(false), 200);
+    setTimeout(() => setFlashEffect(false), 150);
     playSound('shutter');
 
     try {
       const video = videoRef.current;
       const canvas = document.createElement('canvas');
-      canvas.width = 480;
-      canvas.height = 480;
+      canvas.width = 640;
+      canvas.height = 640;
       const ctx = canvas.getContext('2d');
       if (!ctx) return null;
 
-      // Center crop square
-      const minDim = Math.min(video.videoWidth || 480, video.videoHeight || 480);
-      const sx = ((video.videoWidth || 480) - minDim) / 2;
-      const sy = ((video.videoHeight || 480) - minDim) / 2;
+      const vw = video.videoWidth || 640;
+      const vh = video.videoHeight || 480;
+      const minDim = Math.min(vw, vh);
+      const sx = (vw - minDim) / 2;
+      const sy = (vh - minDim) / 2;
 
-      ctx.translate(480, 0);
+      // Mirror capture
+      ctx.translate(640, 0);
       ctx.scale(-1, 1);
-      ctx.drawImage(video, sx, sy, minDim, minDim, 0, 0, 480, 480);
+      ctx.drawImage(video, sx, sy, minDim, minDim, 0, 0, 640, 640);
 
-      const rawDataUrl = canvas.toDataURL('image/jpeg', 0.90);
-      const processed = await processProfilePhoto(rawDataUrl, 400, 400, 0.88);
+      const rawDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      const processed = await processProfilePhoto(rawDataUrl, 420, 420, 0.90);
 
-      const updated = [...photos];
-      updated[slotIndex] = processed;
-      setPhotos(updated);
+      setPhotos((prev) => {
+        const next = [...prev];
+        next[slotIndex] = processed;
+        return next;
+      });
 
       return processed;
     } catch (e) {
       console.error('Error capturing angle photo:', e);
       return null;
     }
-  }, [photos, playSound]);
+  }, [playSound]);
 
-  // Head pose continuous tracker in 3D Mode
+  // Continuous pose tracker in Guided 3D Mode
   useEffect(() => {
     if (mode !== 'GUIDED_3D' || !isCameraActive || isCompleted || isProcessing) return;
 
     let isScanning = true;
-    let matchHoldFrames = 0;
 
     const trackPose = () => {
       if (!isScanning) return;
 
-      if (videoRef.current && canvasRef.current && videoRef.current.readyState === 4) {
+      if (videoRef.current && canvasRef.current && videoRef.current.readyState >= 2) {
         const video = videoRef.current;
         const canvas = canvasRef.current;
         canvas.width = 160;
-        canvas.height = 160;
+        canvas.height = 120;
         const ctx = canvas.getContext('2d');
 
         if (ctx) {
-          ctx.drawImage(video, 0, 0, 160, 160);
+          ctx.drawImage(video, 0, 0, 160, 120);
           const pose = estimateHeadPose(canvas);
           setDetectedPoseAngle(pose.angle);
-
-          const targetStep = CALIBRATION_STEPS[currentStepIndex];
-          const expectedTarget = targetStep?.id;
-          if (!expectedTarget) return;
-
-          // If the detected angle matches what we asked the user to do:
-          if (pose.angle === expectedTarget) {
-            matchHoldFrames++;
-            if (matchHoldFrames >= 8 && !isAutoCapturePending) {
-              // Target angle held for enough frames -> Auto capture!
-              setIsAutoCapturePending(true);
-              playSound('success');
-              captureCurrentAngleSnapshot(currentStepIndex).then(() => {
-                setIsAutoCapturePending(false);
-                matchHoldFrames = 0;
-
-                if (currentStepIndex < CALIBRATION_STEPS.length - 1) {
-                  setCurrentStepIndex((prev) => prev + 1);
-                } else {
-                  setIsCompleted(true);
-                  playSound('complete');
-                }
-              });
-            }
-          } else {
-            matchHoldFrames = Math.max(0, matchHoldFrames - 1);
-          }
         }
       }
 
@@ -299,35 +318,50 @@ export const FacialRegistrationModal: React.FC<FacialRegistrationModalProps> = (
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [mode, isCameraActive, currentStepIndex, isCompleted, isProcessing, isAutoCapturePending, captureCurrentAngleSnapshot, playSound]);
+  }, [mode, isCameraActive, isCompleted, isProcessing, currentStepIndex]);
 
-  // Manual Click to advance angle
+  // Manual Trigger for Current Step
   const handleManualCaptureStep = async () => {
+    if (isProcessing) return;
     setIsProcessing(true);
-    await captureCurrentAngleSnapshot(currentStepIndex);
-    playSound('success');
-    setIsProcessing(false);
 
-    if (currentStepIndex < CALIBRATION_STEPS.length - 1) {
-      setCurrentStepIndex((prev) => prev + 1);
-    } else {
-      setIsCompleted(true);
-      playSound('complete');
+    try {
+      const captured = await captureCurrentAngleSnapshot(currentStepIndex);
+      if (captured) {
+        playSound('success');
+
+        if (currentStepIndex + 1 < CALIBRATION_STEPS.length) {
+          setTimeout(() => {
+            setCurrentStepIndex((prev) => prev + 1);
+            setIsProcessing(false);
+          }, 350);
+        } else {
+          // Completed all 5 steps
+          playSound('complete');
+          setIsCompleted(true);
+          setIsProcessing(false);
+        }
+      } else {
+        setIsProcessing(false);
+      }
+    } catch (err) {
+      setIsProcessing(false);
     }
   };
 
-  // Restart 3D Calibration
   const handleRestartCalibration = () => {
     setCurrentStepIndex(0);
     setIsCompleted(false);
-    setIsCalibrating(true);
-    setPhotos(['', '', '', '', '']);
+    startCamera();
   };
 
-  // Save all photos
   const handleSaveAndConfirm = () => {
-    const validPhotos = photos.filter((p) => p && p.trim().length > 0);
-    onSavePhotos(employee.id, validPhotos);
+    const valid = photos.filter((p) => p && p.trim().length > 0);
+    if (valid.length === 0) {
+      alert('Por favor, capture pelo menos a foto frontal do rosto.');
+      return;
+    }
+    onSavePhotos(employee.id, photos);
     onClose();
   };
 
@@ -336,17 +370,17 @@ export const FacialRegistrationModal: React.FC<FacialRegistrationModalProps> = (
   const currentStep = CALIBRATION_STEPS[safeStepIndex] || CALIBRATION_STEPS[0];
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md overflow-y-auto p-4 flex items-center justify-center animate-in fade-in select-none">
+    <div className="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md overflow-y-auto p-3 sm:p-5 flex items-center justify-center animate-in fade-in select-none">
       
       {/* Flash Effect on Angle Capture */}
       {flashEffect && (
-        <div className="fixed inset-0 z-50 bg-white pointer-events-none transition-opacity duration-200"></div>
+        <div className="fixed inset-0 z-50 bg-white pointer-events-none transition-opacity duration-150"></div>
       )}
 
-      <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-xl w-full p-5 sm:p-6 shadow-2xl relative my-auto text-white">
+      <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl relative my-auto text-white flex flex-col max-h-[95vh]">
         
         {/* Header */}
-        <div className="flex items-center justify-between pb-3.5 border-b border-slate-800 mb-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-blue-600/20 text-blue-400 border border-blue-500/30 rounded-2xl">
               <Compass className="w-5 h-5 animate-pulse" />
@@ -355,11 +389,11 @@ export const FacialRegistrationModal: React.FC<FacialRegistrationModalProps> = (
               <div className="flex items-center gap-2">
                 <h3 className="text-base sm:text-lg font-black text-white">Calibração 3D Face ID</h3>
                 <span className="text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                  Multi-Ângulo
+                  Mapeamento 5 Ângulos
                 </span>
               </div>
               <p className="text-xs text-slate-400 font-medium">
-                Mapeamento facial completo para <strong>{employee.name}</strong>
+                Cadastro biométrico 3D para <strong>{employee.name}</strong>
               </p>
             </div>
           </div>
@@ -373,7 +407,7 @@ export const FacialRegistrationModal: React.FC<FacialRegistrationModalProps> = (
         </div>
 
         {/* Mode Switcher Pills */}
-        <div className="flex bg-slate-950 p-1 rounded-2xl border border-slate-800 mb-4">
+        <div className="flex bg-slate-950 p-1 rounded-2xl border border-slate-800 my-3 shrink-0">
           <button
             onClick={() => setMode('GUIDED_3D')}
             className={`flex-1 py-2 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
@@ -398,104 +432,113 @@ export const FacialRegistrationModal: React.FC<FacialRegistrationModalProps> = (
 
         {/* 3D GUIDED CALIBRATION VIEW */}
         {mode === 'GUIDED_3D' && (
-          <div className="space-y-4">
+          <div className="flex-1 flex flex-col justify-between overflow-y-auto space-y-3">
             {!isCompleted ? (
               <>
                 {/* Active Angle Target Banner */}
-                <div className="bg-blue-950/60 border border-blue-700/50 rounded-2xl p-3.5 text-center relative overflow-hidden">
-                  <div className="flex items-center justify-center gap-2 text-blue-400 font-black text-xs uppercase tracking-wider mb-1">
-                    <Sparkles className="w-4 h-4 text-blue-400" />
+                <div className="bg-gradient-to-r from-blue-950/80 via-slate-900 to-indigo-950/80 border border-blue-700/50 rounded-2xl p-3 text-center relative overflow-hidden shrink-0">
+                  <div className="flex items-center justify-center gap-2 text-blue-400 font-black text-xs uppercase tracking-wider mb-0.5">
+                    <Sparkles className="w-4 h-4 text-amber-300 animate-spin" />
                     <span>Passo {safeStepIndex + 1} de {CALIBRATION_STEPS.length}: {currentStep?.title || ''}</span>
                   </div>
                   <p className="text-sm font-bold text-white mb-0.5">{currentStep?.subtitle || ''}</p>
                   <p className="text-[11px] text-blue-300 font-semibold">{currentStep?.angleHint || ''}</p>
                 </div>
 
-                {/* 360° Circular Biometric HUD Scanner */}
-                <div className="relative w-64 h-64 sm:w-72 sm:h-72 mx-auto flex items-center justify-center">
-                  
-                  {/* Outer 5-Segmented Multi-Angle Progress Ring */}
-                  <svg className="absolute inset-0 w-full h-full transform -rotate-90 pointer-events-none" viewBox="0 0 100 100">
-                    {CALIBRATION_STEPS.map((step, idx) => {
-                      const totalSteps = CALIBRATION_STEPS.length;
-                      const segmentAngle = 360 / totalSteps;
-                      const gap = 6;
-                      const strokeDash = `${(segmentAngle - gap) * 0.72} ${1000}`;
-                      const rotation = idx * segmentAngle;
-                      const isFilled = idx < currentStepIndex || (photos[idx] && photos[idx].length > 0);
-                      const isCurrent = idx === currentStepIndex;
+                {/* EXPANDED & CLEAR CAMERA VIEWPORT */}
+                <div className="relative w-full max-w-md h-[340px] sm:h-[390px] mx-auto rounded-3xl overflow-hidden border-2 border-slate-700 shadow-2xl bg-black flex items-center justify-center shrink-0">
+                  {isCameraActive ? (
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="w-full h-full object-cover transform -scale-x-100"
+                    />
+                  ) : (
+                    <div className="p-6 text-center text-slate-400 max-w-xs flex flex-col items-center gap-3">
+                      {cameraError ? (
+                        <>
+                          <AlertCircle className="w-10 h-10 text-amber-400" />
+                          <p className="text-xs leading-relaxed text-rose-200">{cameraError}</p>
+                          <button
+                            type="button"
+                            onClick={startCamera}
+                            className="mt-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-md"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" /> Reativar Câmera
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
+                          <p className="text-xs font-medium">Iniciando câmera para calibração 3D...</p>
+                        </>
+                      )}
+                    </div>
+                  )}
 
-                      return (
-                        <circle
-                          key={step.id}
-                          cx="50"
-                          cy="50"
-                          r="45"
-                          fill="none"
-                          stroke={isFilled ? '#10b981' : isCurrent ? '#3b82f6' : '#334155'}
-                          strokeWidth={isCurrent ? '5' : '3.5'}
-                          strokeDasharray={strokeDash}
-                          transform={`rotate(${rotation} 50 50)`}
-                          strokeLinecap="round"
-                          className="transition-all duration-300"
-                        />
-                      );
-                    })}
-                  </svg>
+                  {/* High-Tech 3D Face ID Overlay Guide */}
+                  {isCameraActive && (
+                    <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-3">
+                      
+                      {/* Biometric Oval Mask with Dynamic Target Corners */}
+                      <div className="w-60 h-72 sm:w-68 sm:h-80 border-2 border-blue-400/70 rounded-[50%] flex items-center justify-center relative shadow-[0_0_50px_rgba(59,130,246,0.35)] transition-all duration-300">
+                        
+                        {/* Target Corner Marks */}
+                        <div className="absolute -top-3 -left-3 w-7 h-7 border-t-3 border-l-3 border-blue-400 rounded-tl-xl shadow-sm"></div>
+                        <div className="absolute -top-3 -right-3 w-7 h-7 border-t-3 border-r-3 border-blue-400 rounded-tr-xl shadow-sm"></div>
+                        <div className="absolute -bottom-3 -left-3 w-7 h-7 border-b-3 border-l-3 border-blue-400 rounded-bl-xl shadow-sm"></div>
+                        <div className="absolute -bottom-3 -right-3 w-7 h-7 border-b-3 border-r-3 border-blue-400 rounded-br-xl shadow-sm"></div>
 
-                  {/* Circular Video Container */}
-                  <div className="relative w-52 h-52 sm:w-60 sm:h-60 rounded-full overflow-hidden border-4 border-slate-700 shadow-2xl bg-black flex items-center justify-center">
-                    {isCameraActive ? (
-                      <video
-                        ref={videoRef}
-                        autoPlay
-                        playsInline
-                        muted
-                        className="w-full h-full object-cover transform -scale-x-100"
-                      />
-                    ) : (
-                      <div className="p-4 text-center text-slate-400">
-                        <Loader2 className="w-8 h-8 animate-spin text-blue-500 mx-auto mb-2" />
-                        <p className="text-xs">{cameraError || 'Iniciando câmera...'}</p>
+                        {/* Top Step Pill Badge */}
+                        <div className="absolute -top-4 px-3.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-lg bg-blue-600 text-white border border-blue-300">
+                          <Zap className="w-3 h-3 text-amber-300 fill-amber-300" />
+                          <span>{currentStep.title.split('. ')[1]}</span>
+                        </div>
+
+                        {/* Center Target Crosshair / Node */}
+                        <div className="w-3 h-3 rounded-full bg-blue-400/40 border border-blue-300 flex items-center justify-center">
+                          <div className="w-1 h-1 rounded-full bg-white"></div>
+                        </div>
+
+                        {/* Directional Guidance Arrows */}
+                        <div className="absolute inset-0 flex flex-col items-center justify-between p-2">
+                          <div className={`p-2 rounded-full transition-all duration-200 ${currentStep.id === 'UP' ? 'bg-blue-500 text-white scale-125 shadow-lg animate-bounce ring-4 ring-blue-400/50' : 'text-slate-500/40'}`}>
+                            <ArrowUp className="w-5 h-5" />
+                          </div>
+                          <div className="w-full flex items-center justify-between px-1">
+                            <div className={`p-2 rounded-full transition-all duration-200 ${currentStep.id === 'LEFT' ? 'bg-blue-500 text-white scale-125 shadow-lg animate-pulse ring-4 ring-blue-400/50' : 'text-slate-500/40'}`}>
+                              <ArrowLeft className="w-5 h-5" />
+                            </div>
+                            <div className={`p-2 rounded-full transition-all duration-200 ${currentStep.id === 'RIGHT' ? 'bg-blue-500 text-white scale-125 shadow-lg animate-pulse ring-4 ring-blue-400/50' : 'text-slate-500/40'}`}>
+                              <ArrowRight className="w-5 h-5" />
+                            </div>
+                          </div>
+                          <div className={`p-2 rounded-full transition-all duration-200 ${currentStep.id === 'DOWN' ? 'bg-blue-500 text-white scale-125 shadow-lg animate-bounce ring-4 ring-blue-400/50' : 'text-slate-500/40'}`}>
+                            <ArrowDown className="w-5 h-5" />
+                          </div>
+                        </div>
                       </div>
-                    )}
 
-                    {/* Directional Overlay Arrow Hint */}
-                    {isCameraActive && (
-                      <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-between p-3">
-                        {/* Top Indicator */}
-                        <div className={`p-1.5 rounded-full transition ${currentStep?.id === 'UP' ? 'bg-blue-500 text-white animate-bounce' : 'text-slate-600'}`}>
-                          <ArrowUp className="w-5 h-5" />
-                        </div>
-                        <div className="w-full flex items-center justify-between">
-                          <div className={`p-1.5 rounded-full transition ${currentStep?.id === 'LEFT' ? 'bg-blue-500 text-white animate-pulse' : 'text-slate-600'}`}>
-                            <ArrowLeft className="w-5 h-5" />
-                          </div>
-                          <div className={`p-1.5 rounded-full transition ${currentStep?.id === 'CENTER' ? 'bg-emerald-500 text-white ring-4 ring-emerald-400/40' : 'text-slate-600'}`}>
-                            <Dot className="w-5 h-5" />
-                          </div>
-                          <div className={`p-1.5 rounded-full transition ${currentStep?.id === 'RIGHT' ? 'bg-blue-500 text-white animate-pulse' : 'text-slate-600'}`}>
-                            <ArrowRight className="w-5 h-5" />
-                          </div>
-                        </div>
-                        {/* Bottom Indicator */}
-                        <div className={`p-1.5 rounded-full transition ${currentStep?.id === 'DOWN' ? 'bg-blue-500 text-white animate-bounce' : 'text-slate-600'}`}>
-                          <ArrowDown className="w-5 h-5" />
-                        </div>
+                      {/* Detected Pose Live Feedback Badge */}
+                      <div className="absolute bottom-3 bg-slate-900/90 border border-slate-700 backdrop-blur-md px-3 py-1.5 rounded-full text-[10px] font-bold text-slate-200 flex items-center gap-2 shadow-lg">
+                        <Eye className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Detector Facial: <strong>{detectedPoseAngle}</strong></span>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* Progress Indicators Pills */}
-                <div className="flex items-center justify-center gap-2">
+                {/* 5-Step Angle Progress Pills */}
+                <div className="flex items-center justify-center gap-1.5 sm:gap-2 shrink-0">
                   {CALIBRATION_STEPS.map((s, idx) => {
                     const isDone = !!photos[idx];
                     const isCurr = idx === currentStepIndex;
                     return (
                       <div
                         key={s.id}
-                        className={`px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 border transition ${
+                        className={`px-2.5 py-1 rounded-xl text-[10px] font-bold flex items-center gap-1 border transition ${
                           isDone
                             ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300'
                             : isCurr
@@ -510,21 +553,21 @@ export const FacialRegistrationModal: React.FC<FacialRegistrationModalProps> = (
                   })}
                 </div>
 
-                {/* Calibration Action Buttons */}
-                <div className="flex items-center gap-3 pt-2">
+                {/* Prominent Action Button for Angle Capture */}
+                <div className="pt-1 shrink-0">
                   <button
                     type="button"
                     onClick={handleManualCaptureStep}
                     disabled={!isCameraActive || isProcessing}
-                    className="flex-1 py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-sm rounded-2xl shadow-xl shadow-emerald-600/30 flex items-center justify-center gap-2 cursor-pointer transition active:scale-95 disabled:opacity-50"
+                    className="w-full py-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-teal-600 hover:from-blue-500 hover:to-teal-500 text-white font-black text-sm sm:text-base rounded-2xl shadow-xl shadow-blue-600/30 flex items-center justify-center gap-2 cursor-pointer transition active:scale-[0.98] border border-blue-400 disabled:opacity-50"
                   >
                     {isProcessing ? (
                       <>
-                        <Loader2 className="w-4 h-4 animate-spin" /> Processando...
+                        <Loader2 className="w-5 h-5 animate-spin" /> Mapeando Ponto Facial 3D...
                       </>
                     ) : (
                       <>
-                        <Camera className="w-4 h-4" /> CAPTURAR ÂNGULO AGORA
+                        <Camera className="w-5 h-5 text-amber-300" /> CAPTURAR ÂNGULO {safeStepIndex + 1}/5 ({currentStep.title.split('. ')[1]})
                       </>
                     )}
                   </button>
@@ -532,14 +575,14 @@ export const FacialRegistrationModal: React.FC<FacialRegistrationModalProps> = (
               </>
             ) : (
               /* Calibration Complete Screen */
-              <div className="py-4 text-center space-y-4 animate-in zoom-in-95">
-                <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 border-2 border-emerald-500 rounded-full flex items-center justify-center mx-auto shadow-2xl">
-                  <CheckCircle2 className="w-10 h-10" />
+              <div className="py-6 text-center space-y-4 animate-in zoom-in-95 my-auto">
+                <div className="w-20 h-20 bg-emerald-500/20 text-emerald-400 border-2 border-emerald-500 rounded-full flex items-center justify-center mx-auto shadow-2xl">
+                  <CheckCircle2 className="w-12 h-12" />
                 </div>
                 <div>
-                  <h4 className="text-lg font-black text-white">Mapeamento 3D Concluído!</h4>
-                  <p className="text-xs text-slate-300 max-w-sm mx-auto mt-1">
-                    Todos os 5 ângulos faciais (frontal, lateral esquerdo, lateral direito, superior e inferior) foram registrados com sucesso.
+                  <h4 className="text-xl font-black text-white">Mapeamento 3D Concluído!</h4>
+                  <p className="text-xs text-slate-300 max-w-md mx-auto mt-1">
+                    Os 5 ângulos faciais (frontal, lateral esquerdo, lateral direito, superior e inferior) foram registrados com sucesso.
                   </p>
                 </div>
 
@@ -559,20 +602,20 @@ export const FacialRegistrationModal: React.FC<FacialRegistrationModalProps> = (
                   ))}
                 </div>
 
-                <div className="flex items-center gap-3 pt-2">
+                <div className="flex items-center gap-3 pt-3">
                   <button
                     type="button"
                     onClick={handleRestartCalibration}
-                    className="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer border border-slate-700"
+                    className="py-3.5 px-5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer border border-slate-700"
                   >
                     <RotateCcw className="w-3.5 h-3.5" /> Recalibrar
                   </button>
                   <button
                     type="button"
                     onClick={handleSaveAndConfirm}
-                    className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm rounded-xl shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 cursor-pointer transition active:scale-95"
+                    className="flex-1 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm rounded-xl shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 cursor-pointer transition active:scale-95"
                   >
-                    <UserCheck className="w-4 h-4" /> SALVAR FACE ID NO SISTEMA
+                    <UserCheck className="w-5 h-5" /> SALVAR FACE ID NO SISTEMA
                   </button>
                 </div>
               </div>
@@ -582,7 +625,7 @@ export const FacialRegistrationModal: React.FC<FacialRegistrationModalProps> = (
 
         {/* MANUAL GRID VIEW (Photos Gallery & Slot Editor) */}
         {mode === 'MANUAL_GRID' && (
-          <div className="space-y-4">
+          <div className="flex-1 overflow-y-auto space-y-4 pt-1">
             <p className="text-xs text-slate-400">
               Você pode capturar ou substituir fotos individuais para qualquer um dos 5 ângulos do Face ID.
             </p>
@@ -603,18 +646,18 @@ export const FacialRegistrationModal: React.FC<FacialRegistrationModalProps> = (
                       {step.title.split('. ')[1] || step.title}
                     </span>
 
-                    <div className="relative w-20 h-20 rounded-xl overflow-hidden bg-slate-800 mb-2 border border-slate-700">
+                    <div className="relative w-24 h-24 rounded-xl overflow-hidden bg-slate-800 mb-2 border border-slate-700">
                       {hasPhoto ? (
                         <img src={photos[idx]} alt={step.title} className="w-full h-full object-cover" />
                       ) : (
                         <div className="flex flex-col items-center justify-center h-full text-slate-500">
-                          <Camera className="w-5 h-5 mb-1" />
+                          <Camera className="w-6 h-6 mb-1" />
                           <span className="text-[9px] font-bold">Vazio</span>
                         </div>
                       )}
 
                       {hasPhoto && (
-                        <div className="absolute top-1 right-1 bg-emerald-600 text-white p-0.5 rounded-full shadow-md">
+                        <div className="absolute top-1 right-1 bg-emerald-600 text-white p-1 rounded-full shadow-md">
                           <Check className="w-3 h-3" />
                         </div>
                       )}
@@ -626,9 +669,9 @@ export const FacialRegistrationModal: React.FC<FacialRegistrationModalProps> = (
                         onClick={async () => {
                           await captureCurrentAngleSnapshot(idx);
                         }}
-                        className="flex-1 py-1.5 px-2 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-[10px] rounded-lg cursor-pointer flex items-center justify-center gap-1"
+                        className="flex-1 py-2 px-2 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-[11px] rounded-lg cursor-pointer flex items-center justify-center gap-1"
                       >
-                        <Camera className="w-3 h-3" /> Foto
+                        <Camera className="w-3.5 h-3.5" /> Foto
                       </button>
                       <button
                         type="button"
@@ -636,10 +679,10 @@ export const FacialRegistrationModal: React.FC<FacialRegistrationModalProps> = (
                           setActiveManualSlot(idx);
                           fileInputRef.current?.click();
                         }}
-                        className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg cursor-pointer border border-slate-700"
+                        className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg cursor-pointer border border-slate-700"
                         title="Upload de arquivo"
                       >
-                        <Upload className="w-3 h-3" />
+                        <Upload className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
@@ -656,14 +699,14 @@ export const FacialRegistrationModal: React.FC<FacialRegistrationModalProps> = (
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl cursor-pointer"
+                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="button"
                   onClick={handleSaveAndConfirm}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center gap-1.5 cursor-pointer"
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center gap-1.5 cursor-pointer"
                 >
                   <UserCheck className="w-4 h-4" /> Salvar Face ID
                 </button>
@@ -682,10 +725,12 @@ export const FacialRegistrationModal: React.FC<FacialRegistrationModalProps> = (
             const file = e.target.files?.[0];
             if (!file || activeManualSlot === null) return;
             try {
-              const processed = await processProfilePhoto(file, 400, 400, 0.88);
-              const updated = [...photos];
-              updated[activeManualSlot] = processed;
-              setPhotos(updated);
+              const processed = await processProfilePhoto(file, 420, 420, 0.90);
+              setPhotos((prev) => {
+                const updated = [...prev];
+                updated[activeManualSlot] = processed;
+                return updated;
+              });
             } catch (err) {
               console.error(err);
             } finally {

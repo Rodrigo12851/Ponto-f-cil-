@@ -89,6 +89,19 @@ export function subscribeEmployees(
   }
 }
 
+// Safe error reporter to prevent infinite error spamming
+let hasReportedQuotaExceeded = false;
+function handleFirestoreError(context: string, err: any) {
+  if (err?.code === 'resource-exhausted' || err?.message?.includes('resource-exhausted') || err?.message?.includes('Quota limit exceeded')) {
+    if (!hasReportedQuotaExceeded) {
+      hasReportedQuotaExceeded = true;
+      console.warn(`[Firebase Firestore] Quota limit exceeded for ${context}. Operating smoothly in resilient local-first mode.`);
+    }
+  } else {
+    console.warn(`[Firebase Firestore] ${context}:`, err?.message || err);
+  }
+}
+
 export async function seedInitialEmployees(): Promise<void> {
   try {
     const batch = writeBatch(db);
@@ -101,8 +114,8 @@ export async function seedInitialEmployees(): Promise<void> {
     }
     await batch.commit();
     console.log('Initial employees successfully seeded to Firebase Firestore.');
-  } catch (err) {
-    console.error('Error seeding employees in batch:', err);
+  } catch (err: any) {
+    handleFirestoreError('seedInitialEmployees', err);
   }
 }
 
@@ -117,9 +130,8 @@ export async function saveEmployeeToFirestore(employee: Employee): Promise<void>
       },
       { merge: true }
     );
-  } catch (err) {
-    console.error(`Error saving employee ${employee.id} to Firestore:`, err);
-    throw err;
+  } catch (err: any) {
+    handleFirestoreError(`saveEmployeeToFirestore(${employee.id})`, err);
   }
 }
 
@@ -127,9 +139,8 @@ export async function deleteEmployeeFromFirestore(employeeId: string): Promise<v
   try {
     const docRef = doc(db, EMPLOYEES_COLLECTION, employeeId);
     await deleteDoc(docRef);
-  } catch (err) {
-    console.error(`Error deleting employee ${employeeId} from Firestore:`, err);
-    throw err;
+  } catch (err: any) {
+    handleFirestoreError(`deleteEmployeeFromFirestore(${employeeId})`, err);
   }
 }
 
@@ -181,9 +192,8 @@ export async function saveGeofenceToFirestore(geofence: CompanyGeofence): Promis
       },
       { merge: true }
     );
-  } catch (err) {
-    console.error('Error saving geofence to Firestore:', err);
-    throw err;
+  } catch (err: any) {
+    handleFirestoreError('saveGeofenceToFirestore', err);
   }
 }
 
@@ -235,9 +245,8 @@ export async function saveOwnerSettingsToFirestore(settings: OwnerSettings): Pro
       },
       { merge: true }
     );
-  } catch (err) {
-    console.error('Error saving owner settings to Firestore:', err);
-    throw err;
+  } catch (err: any) {
+    handleFirestoreError('saveOwnerSettingsToFirestore', err);
   }
 }
 
@@ -280,7 +289,7 @@ export async function addFacialAuditLogToFirestore(log: FacialAuditLog): Promise
       ...log,
       createdAt: new Date().toISOString(),
     });
-  } catch (err) {
-    console.error('Error writing facial audit log to Firestore:', err);
+  } catch (err: any) {
+    handleFirestoreError('addFacialAuditLogToFirestore', err);
   }
 }

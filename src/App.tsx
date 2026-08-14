@@ -275,23 +275,20 @@ export default function App() {
     };
   }, []);
 
-  // Save changes to localStorage and Firestore
+  // Save changes to localStorage only (Firestore sync is handled on specific mutations to avoid write loops)
   useEffect(() => {
     localStorage.setItem('sistema_ponto_funcionarios_v3', JSON.stringify(employees));
-    // Sync employees to Firestore asynchronously
-    employees.forEach((emp) => {
-      saveEmployeeToFirestore(emp).catch((err) => {
-        console.warn(`Firestore sync warning for ${emp.name}:`, err);
-      });
-    });
   }, [employees]);
 
   useEffect(() => {
     localStorage.setItem('sistema_ponto_geofence', JSON.stringify(geofence));
-    saveGeofenceToFirestore(geofence).catch((err) => {
-      console.warn('Firestore geofence sync warning:', err);
-    });
   }, [geofence]);
+
+  const handleUpdateGeofence = (newGf: CompanyGeofence) => {
+    setGeofence(newGf);
+    localStorage.setItem('sistema_ponto_geofence', JSON.stringify(newGf));
+    saveGeofenceToFirestore(newGf).catch(() => {});
+  };
 
   // Fetch initial location on load
   useEffect(() => {
@@ -345,6 +342,7 @@ export default function App() {
       status: 'APROVADO',
     };
 
+    let updatedEmployeeToSync: Employee | null = null;
     setEmployees((prev) =>
       prev.map((emp) => {
         if (emp.id !== currentEmployee.id) return emp;
@@ -373,15 +371,21 @@ export default function App() {
           .filter((d) => d.status === 'TRABALHADO' || d.status === 'EM_ANDAMENTO')
           .reduce((acc, curr) => acc + curr.balanceMinutes, 0);
 
-        return {
+        const updated = {
           ...emp,
           days: updatedDays,
           lastPunchType: type,
           lastPunchTime: timeFormatted,
           bancoDeHorasMinutes: newBankMinutes,
         };
+        updatedEmployeeToSync = updated;
+        return updated;
       })
     );
+
+    if (updatedEmployeeToSync) {
+      saveEmployeeToFirestore(updatedEmployeeToSync).catch(() => {});
+    }
 
     try {
       confetti({
@@ -423,6 +427,7 @@ export default function App() {
       status: 'APROVADO',
     };
 
+    let updatedEmpToSync: Employee | null = null;
     setEmployees((prev) =>
       prev.map((emp) => {
         if (emp.id !== currentEmployee.id) return emp;
@@ -448,15 +453,21 @@ export default function App() {
           .filter((d) => d.status === 'TRABALHADO' || d.status === 'EM_ANDAMENTO')
           .reduce((acc, curr) => acc + curr.balanceMinutes, 0);
 
-        return {
+        const updated = {
           ...emp,
           days: updatedDays,
           lastPunchType: cameraPunchType,
           lastPunchTime: timeFormatted,
           bancoDeHorasMinutes: newBankMinutes,
         };
+        updatedEmpToSync = updated;
+        return updated;
       })
     );
+
+    if (updatedEmpToSync) {
+      saveEmployeeToFirestore(updatedEmpToSync).catch(() => {});
+    }
 
     // Trigger celebration confetti
     try {
@@ -494,6 +505,7 @@ export default function App() {
       notes: 'Registrado via Tablet / Ponto Fixo da Empresa',
     };
 
+    let updatedEmpToSync: Employee | null = null;
     setEmployees((prev) =>
       prev.map((emp) => {
         if (emp.id !== employeeId) return emp;
@@ -522,15 +534,21 @@ export default function App() {
           .filter((d) => d.status === 'TRABALHADO' || d.status === 'EM_ANDAMENTO')
           .reduce((acc, curr) => acc + curr.balanceMinutes, 0);
 
-        return {
+        const updated = {
           ...emp,
           days: updatedDays,
           lastPunchType: punchType,
           lastPunchTime: timeFormatted,
           bancoDeHorasMinutes: newBankMinutes,
         };
+        updatedEmpToSync = updated;
+        return updated;
       })
     );
+
+    if (updatedEmpToSync) {
+      saveEmployeeToFirestore(updatedEmpToSync).catch(() => {});
+    }
 
     try {
       confetti({
@@ -561,6 +579,7 @@ export default function App() {
       status: 'PENDENTE',
     };
 
+    let updatedEmpToSync: Employee | null = null;
     setEmployees((prev) =>
       prev.map((emp) => {
         if (emp.id !== currentEmployee.id) return emp;
@@ -577,12 +596,18 @@ export default function App() {
           };
         });
 
-        return {
+        const updated = {
           ...emp,
           days: updatedDays,
         };
+        updatedEmpToSync = updated;
+        return updated;
       })
     );
+
+    if (updatedEmpToSync) {
+      saveEmployeeToFirestore(updatedEmpToSync).catch(() => {});
+    }
   };
 
   // Admin: Add new employee
@@ -616,6 +641,7 @@ export default function App() {
     };
 
     setEmployees((prev) => [...prev, newEmp]);
+    saveEmployeeToFirestore(newEmp).catch(() => {});
   };
 
   // Admin: Update general employee registration & schedule data
@@ -623,15 +649,22 @@ export default function App() {
     employeeId: string,
     updatedData: Partial<Employee>
   ) => {
+    let updatedEmpToSync: Employee | null = null;
     setEmployees((prev) =>
       prev.map((emp) => {
         if (emp.id !== employeeId) return emp;
-        return {
+        const updated = {
           ...emp,
           ...updatedData,
         };
+        updatedEmpToSync = updated;
+        return updated;
       })
     );
+
+    if (updatedEmpToSync) {
+      saveEmployeeToFirestore(updatedEmpToSync).catch(() => {});
+    }
   };
 
   // Admin: Update employee lunch rules
@@ -641,6 +674,7 @@ export default function App() {
     lunchDurationMinutes: number,
     lunchScheduledTime: string
   ) => {
+    let updatedEmpToSync: Employee | null = null;
     setEmployees((prev) =>
       prev.map((emp) => {
         if (emp.id !== employeeId) return emp;
@@ -658,15 +692,21 @@ export default function App() {
           };
         });
 
-        return {
+        const updated = {
           ...emp,
           lunchMode,
           lunchDurationMinutes,
           lunchScheduledTime,
           days: updatedDays,
         };
+        updatedEmpToSync = updated;
+        return updated;
       })
     );
+
+    if (updatedEmpToSync) {
+      saveEmployeeToFirestore(updatedEmpToSync).catch(() => {});
+    }
   };
 
   if (!isAuthenticated) {
@@ -754,7 +794,7 @@ export default function App() {
                           onDirectPunch={handleDirectPunch}
                           onRefreshLocation={fetchCurrentLocation}
                           onUpdateGeofence={(newGf) => {
-                            setGeofence(newGf);
+                            handleUpdateGeofence(newGf);
                             fetchCurrentLocation();
                           }}
                           onOpenFaceIdCalibration={() => setFacialRegistrationEmp(currentEmployee)}
@@ -797,7 +837,7 @@ export default function App() {
                 <AdminDashboard
                   employees={employees}
                   geofence={geofence}
-                  onUpdateGeofence={(newFence) => setGeofence(newFence)}
+                  onUpdateGeofence={handleUpdateGeofence}
                   onAddEmployee={handleAddEmployee}
                   onUpdateEmployee={handleUpdateEmployee}
                   onApprovePunch={() => {}}

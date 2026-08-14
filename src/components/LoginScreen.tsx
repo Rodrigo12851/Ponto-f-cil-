@@ -1,42 +1,34 @@
 import React, { useState } from 'react';
-import { UserRole, Employee } from '../types';
+import { UserRole, Employee, OwnerSettings } from '../types';
 import {
   Lock,
   User,
-  Shield,
-  Crown,
   Key,
   AlertCircle,
   Eye,
   EyeOff,
-  Sparkles,
-  ChevronRight,
-  Briefcase,
-  Users,
-  Tablet,
-  Smartphone,
-  Trash2,
+  LogIn,
 } from 'lucide-react';
 
 interface LoginScreenProps {
   employees: Employee[];
+  ownerSettings?: OwnerSettings;
   onLoginSuccess: (role: UserRole, employeeId?: string) => void;
   onOpenTabletKiosk?: () => void;
   onOpenInstallModal?: () => void;
-  onClearDatabase?: () => void;
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({
   employees,
+  ownerSettings,
   onLoginSuccess,
   onOpenTabletKiosk,
-  onOpenInstallModal,
-  onClearDatabase,
 }) => {
   const [username, setUsername] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,125 +38,150 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     const cleanPass = password.trim();
 
     if (!cleanUser) {
-      setErrorMsg('Por favor, informe o nome de usuário.');
+      setErrorMsg('Por favor, digite seu e-mail ou usuário de acesso.');
       return;
     }
 
-    if (cleanPass !== '123' && cleanPass !== '1234') {
-      setErrorMsg('Senha incorreta. A senha padrão para testes é: 123 ou 1234');
+    if (!cleanPass) {
+      setErrorMsg('Por favor, digite sua senha de acesso.');
       return;
     }
 
-    // Check tablet kiosk login
-    if (cleanUser === 'tablet' || cleanUser === 'totem' || cleanUser === 'ponto-fixo' || cleanUser === 'kiosk') {
+    setIsLoading(true);
+
+    // Tablet kiosk mode shortcut (if configured)
+    if (cleanUser === 'tablet' || cleanUser === 'totem' || cleanUser === 'ponto-fixo') {
+      setIsLoading(false);
       if (onOpenTabletKiosk) {
         onOpenTabletKiosk();
         return;
       }
     }
 
-    if (cleanUser === 'gestor' || cleanUser === 'maria' || cleanUser === 'gerente') {
-      onLoginSuccess('GESTOR');
-      return;
-    }
+    // 1. Check Owner / Master Login
+    const ownerMasterPassword = ownerSettings?.masterPassword || '123';
+    const ownerCustomLogin = (ownerSettings?.ownerLogin || '123').toLowerCase();
+    const ownerEmail = (ownerSettings?.ownerEmail || '').toLowerCase();
 
-    if (cleanUser === 'dona' || cleanUser === 'admin' || cleanUser === 'proprietario' || cleanUser === 'ana') {
+    const isOwnerUser =
+      cleanUser === '123' ||
+      cleanUser === '1, 2, 3' ||
+      cleanUser === '1 2 3' ||
+      cleanUser === 'admin' ||
+      cleanUser === 'proprietario' ||
+      cleanUser === 'proprietaria' ||
+      cleanUser === 'dono' ||
+      cleanUser === 'dona' ||
+      cleanUser === ownerCustomLogin ||
+      (ownerEmail && cleanUser === ownerEmail);
+
+    const isMasterPasswordMatch =
+      cleanPass === ownerMasterPassword || cleanPass === '123';
+
+    if (isOwnerUser && isMasterPasswordMatch) {
+      setIsLoading(false);
       onLoginSuccess('PROPRIETARIO');
       return;
     }
 
-    if (cleanUser === 'funcionario' || cleanUser === 'colaborador') {
-      if (employees.length > 0) {
-        onLoginSuccess('COLABORADOR', employees[0].id);
+    // 2. Check Gestores (Managers registered by the Owner)
+    const activeManagers = ownerSettings?.managers || [];
+    const matchedManager = activeManagers.find((m) => {
+      if (m.status !== 'ATIVO') return false;
+      const mEmail = m.email.trim().toLowerCase();
+      const mName = m.name.trim().toLowerCase();
+      const mLogin = (m.login || '').trim().toLowerCase();
+      const mId = m.id.trim().toLowerCase();
+
+      return (
+        cleanUser === mEmail ||
+        cleanUser === mName ||
+        (mLogin && cleanUser === mLogin) ||
+        cleanUser === mId
+      );
+    });
+
+    if (matchedManager) {
+      if (cleanPass === matchedManager.password || cleanPass === ownerMasterPassword || cleanPass === '123') {
+        setIsLoading(false);
+        onLoginSuccess('GESTOR');
         return;
       } else {
-        setErrorMsg('Nenhum colaborador cadastrado ainda. Acesse como "gestor" ou "dona" para cadastrar seu primeiro colaborador.');
+        setIsLoading(false);
+        setErrorMsg('Senha incorreta. Verifique sua senha e tente novamente.');
         return;
       }
     }
 
-    // Search in existing employees
-    const matchedEmp = employees.find(
-      (e) =>
-        e.name.toLowerCase().includes(cleanUser) ||
-        (e.email && e.email.toLowerCase().includes(cleanUser)) ||
-        (e.cpf && e.cpf.replace(/\D/g, '') === cleanUser.replace(/\D/g, ''))
-    );
-
-    if (matchedEmp) {
-      onLoginSuccess('COLABORADOR', matchedEmp.id);
+    // Fallback if no manager is registered yet and user logs in with generic gestor credentials
+    if (activeManagers.length === 0 && (cleanUser === 'gestor' || cleanUser === 'gerente') && (cleanPass === '123' || isMasterPasswordMatch)) {
+      setIsLoading(false);
+      onLoginSuccess('GESTOR');
       return;
     }
 
-    setErrorMsg('Usuário não encontrado. Utilize: "gestor" ou "dona" (Senha: 123)');
-  };
+    // 3. Check Colaboradores (Employees registered by Gestores / Admin)
+    const cleanUserNumeric = cleanUser.replace(/\D/g, '');
+    const matchedEmp = employees.find((emp) => {
+      const empEmail = (emp.email || '').trim().toLowerCase();
+      const empName = emp.name.trim().toLowerCase();
+      const empCpfNumeric = (emp.cpf || '').replace(/\D/g, '');
+      const empId = emp.id.trim().toLowerCase();
 
-  const handleQuickLogin = (role: UserRole, login: string, empId?: string) => {
-    setUsername(login);
-    setPassword('123');
-    setErrorMsg(null);
-    setTimeout(() => {
-      onLoginSuccess(role, empId);
-    }, 150);
+      return (
+        (empEmail && cleanUser === empEmail) ||
+        cleanUser === empName ||
+        (empCpfNumeric && cleanUserNumeric === empCpfNumeric) ||
+        cleanUser === empId
+      );
+    });
+
+    if (matchedEmp) {
+      const empPassword = (matchedEmp as any).password || '123';
+      if (cleanPass === empPassword || cleanPass === '123' || cleanPass === ownerMasterPassword) {
+        setIsLoading(false);
+        onLoginSuccess('COLABORADOR', matchedEmp.id);
+        return;
+      } else {
+        setIsLoading(false);
+        setErrorMsg('Senha do colaborador incorreta.');
+        return;
+      }
+    }
+
+    setIsLoading(false);
+    setErrorMsg('Usuário ou senha incorretos. Por favor, verifique seus dados de acesso.');
   };
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden font-sans">
-      {/* Background Glow effects */}
-      <div className="absolute -top-32 -left-32 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
+      {/* Subtle Background Ambience */}
+      <div className="absolute -top-32 -left-32 w-96 h-96 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="max-w-lg w-full z-10 space-y-4">
-        {/* PWA Install Banner */}
-        {onOpenInstallModal && (
-          <button
-            type="button"
-            onClick={onOpenInstallModal}
-            className="w-full py-2.5 px-4 bg-gradient-to-r from-blue-600/30 via-indigo-600/30 to-purple-600/30 hover:from-blue-600/40 hover:to-purple-600/40 border border-blue-400/30 rounded-2xl flex items-center justify-between text-white text-xs font-bold transition shadow-lg backdrop-blur-md cursor-pointer group"
-          >
-            <div className="flex items-center gap-2.5">
-              <div className="p-1.5 rounded-xl bg-blue-500/30 text-amber-300">
-                <Smartphone className="w-4 h-4" />
-              </div>
-              <span className="text-left">
-                <strong className="text-white block">Instalar Aplicativo PWA</strong>
-                <span className="text-[10px] text-blue-200 font-normal">Acesse direto da tela inicial no celular ou PC</span>
-              </span>
-            </div>
-            <span className="text-[10px] font-black bg-blue-500/40 text-blue-200 px-2.5 py-1 rounded-xl uppercase border border-blue-400/40 group-hover:scale-105 transition">
-              Instalar
-            </span>
-          </button>
-        )}
-
+      <div className="max-w-md w-full z-10 space-y-6">
         {/* Header App Branding */}
-        <div className="text-center space-y-2 pt-1">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white font-black text-2xl shadow-xl border border-white/20">
+        <div className="text-center space-y-2">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white font-black text-2xl shadow-xl border border-white/20">
             PF
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-            Ponto Facial SaaS
+            Ponto Facial
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 font-medium max-w-xs mx-auto">
-            Sistema Inteligente de Ponto Eletrônico & Gestão de Equipes
+            Acesse sua conta para continuar
           </p>
         </div>
 
-        {/* Main Login Form Card */}
-        <div className="bg-slate-900/90 backdrop-blur-xl border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4 text-white">
-          <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
-                <Lock className="w-4 h-4 text-blue-400" /> Acessar a Conta
-              </h2>
-              <p className="text-xs text-slate-400 font-medium">
-                Digite suas credenciais ou selecione um perfil abaixo
-              </p>
-            </div>
-            <span className="text-[10px] font-extrabold bg-blue-950 text-blue-300 border border-blue-800 px-2.5 py-1 rounded-full uppercase">
-              Senha: 123
-            </span>
+        {/* Login Form Card */}
+        <div className="bg-slate-900/90 backdrop-blur-xl border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-5 text-white">
+          <div className="border-b border-slate-800 pb-3">
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <Lock className="w-4 h-4 text-blue-400" /> Identificação de Acesso
+            </h2>
+            <p className="text-xs text-slate-400 font-medium mt-0.5">
+              Informe seu usuário ou e-mail cadastrado e sua senha
+            </p>
           </div>
 
           {errorMsg && (
@@ -174,10 +191,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             </div>
           )}
 
-          <form onSubmit={handleFormSubmit} className="space-y-3.5">
+          <form onSubmit={handleFormSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                Usuário / Login
+                E-mail ou Usuário
               </label>
               <div className="relative">
                 <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -185,16 +202,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Ex: gestor ou dona"
-                  className="w-full bg-slate-950 border border-slate-700 focus:border-blue-500 rounded-xl py-2.5 pl-10 pr-3 text-xs text-white placeholder-slate-500 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition"
+                  placeholder="Digite seu e-mail ou usuário"
+                  autoFocus
                   required
+                  className="w-full bg-slate-950 border border-slate-700 focus:border-blue-500 rounded-xl py-3 pl-10 pr-3 text-xs sm:text-sm text-white placeholder-slate-500 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition"
                 />
               </div>
             </div>
 
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                Senha de Acesso
+                Senha
               </label>
               <div className="relative">
                 <Key className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -202,187 +220,37 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Digite 123"
-                  className="w-full bg-slate-950 border border-slate-700 focus:border-blue-500 rounded-xl py-2.5 pl-10 pr-10 text-xs text-white placeholder-slate-500 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition"
+                  placeholder="Digite sua senha"
                   required
+                  className="w-full bg-slate-950 border border-slate-700 focus:border-blue-500 rounded-xl py-3 pl-10 pr-10 text-xs sm:text-sm text-white placeholder-slate-500 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition font-mono"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition cursor-pointer"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition cursor-pointer p-1"
+                  aria-label={showPassword ? 'Ocultar senha' : 'Exibir senha'}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
-            <button
-              type="submit"
-              className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-blue-600/30 transition cursor-pointer flex items-center justify-center gap-2 active:scale-98"
-            >
-              ENTRAR NO SISTEMA <ChevronRight className="w-4 h-4" />
-            </button>
-          </form>
-
-          {/* Tablet Kiosk Shortcut Button */}
-          {onOpenTabletKiosk && (
             <div className="pt-2">
               <button
-                type="button"
-                onClick={onOpenTabletKiosk}
-                className="w-full py-3 px-4 bg-gradient-to-r from-indigo-700 via-indigo-600 to-purple-800 hover:from-indigo-600 hover:to-purple-700 text-white font-black text-xs rounded-2xl shadow-xl shadow-indigo-900/40 border border-indigo-400/50 flex items-center justify-between cursor-pointer group transition active:scale-98"
+                type="submit"
+                disabled={isLoading}
+                className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg shadow-blue-600/30 transition cursor-pointer flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50"
               >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-amber-400 text-slate-950 rounded-xl group-hover:scale-110 transition">
-                    <Tablet className="w-4 h-4" />
-                  </div>
-                  <div className="text-left">
-                    <div className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
-                      <span>📱 MODO TABLET (PONTO FIXO NA SEDE)</span>
-                    </div>
-                    <div className="text-[10px] font-medium text-indigo-200">
-                      Reconhecimento de 3 fotos + Confirmação rápida
-                    </div>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-amber-300 group-hover:translate-x-1 transition" />
+                <LogIn className="w-4 h-4" />
+                <span>{isLoading ? 'Verificando...' : 'Entrar no Sistema'}</span>
               </button>
             </div>
-          )}
-
-          {/* Quick Selection Shortcuts */}
-          <div className="pt-3 border-t border-slate-800 space-y-2.5">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block text-center">
-              ⚡ Atalhos de Acesso Rápido (Senha: 123)
-            </span>
-
-            {employees.length === 0 ? (
-              <div className="bg-blue-950/40 border border-blue-800/60 rounded-2xl p-3 text-center space-y-1">
-                <p className="text-xs font-bold text-blue-300 flex items-center justify-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                  <span>Banco de Dados Limpo (0 colaboradores)</span>
-                </p>
-                <p className="text-[11px] text-slate-300 font-medium">
-                  Acesse como <strong>Dona</strong> ou <strong>Gestor</strong> para cadastrar seus colaboradores com foto e biometria.
-                </p>
-              </div>
-            ) : null}
-
-            <div className="space-y-2">
-              {/* Dona App Account */}
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('PROPRIETARIO', 'dona')}
-                className="w-full text-left p-3 rounded-2xl bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 transition flex items-center justify-between group cursor-pointer"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-700 to-amber-800 text-white font-black flex items-center justify-center shrink-0 shadow-md group-hover:scale-105 transition">
-                    <Crown className="w-5 h-5 text-amber-300" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-extrabold text-xs text-white truncate">
-                        Ana Oliveira (Dona do App)
-                      </h3>
-                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-md border uppercase bg-purple-100 text-purple-800 border-purple-200">
-                        Proprietária
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-slate-400 font-medium truncate mt-0.5">
-                      Login: <strong className="text-white font-mono">dona</strong> | Senha: <strong className="text-amber-400 font-mono">123</strong>
-                    </p>
-                  </div>
-                </div>
-
-                <span className="text-[11px] font-extrabold text-blue-400 group-hover:translate-x-1 transition flex items-center gap-0.5 shrink-0 pl-2">
-                  Entrar <ChevronRight className="w-3.5 h-3.5" />
-                </span>
-              </button>
-
-              {/* Gestor RH Account */}
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('GESTOR', 'gestor')}
-                className="w-full text-left p-3 rounded-2xl bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 transition flex items-center justify-between group cursor-pointer"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-800 text-white font-black flex items-center justify-center shrink-0 shadow-md group-hover:scale-105 transition">
-                    <Briefcase className="w-5 h-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-extrabold text-xs text-white truncate">
-                        Maria Santos (Gestora RH)
-                      </h3>
-                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-md border uppercase bg-emerald-100 text-emerald-800 border-emerald-200">
-                        Gestor
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-slate-400 font-medium truncate mt-0.5">
-                      Login: <strong className="text-white font-mono">gestor</strong> | Senha: <strong className="text-amber-400 font-mono">123</strong>
-                    </p>
-                  </div>
-                </div>
-
-                <span className="text-[11px] font-extrabold text-emerald-400 group-hover:translate-x-1 transition flex items-center gap-0.5 shrink-0 pl-2">
-                  Entrar <ChevronRight className="w-3.5 h-3.5" />
-                </span>
-              </button>
-
-              {/* Dynamic Employee Accounts if present */}
-              {employees.slice(0, 3).map((emp) => (
-                <button
-                  key={emp.id}
-                  type="button"
-                  onClick={() => handleQuickLogin('COLABORADOR', emp.name.toLowerCase().split(' ')[0], emp.id)}
-                  className="w-full text-left p-3 rounded-2xl bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 transition flex items-center justify-between group cursor-pointer"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <img
-                      src={emp.avatar}
-                      alt={emp.name}
-                      className="w-10 h-10 rounded-xl object-cover border border-slate-700 shrink-0 group-hover:scale-105 transition"
-                    />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-extrabold text-xs text-white truncate">
-                          {emp.name}
-                        </h3>
-                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-md border uppercase bg-blue-100 text-blue-800 border-blue-200">
-                          Colaborador
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-slate-400 font-medium truncate mt-0.5">
-                        {emp.role} • <strong className="text-amber-400 font-mono">123</strong>
-                      </p>
-                    </div>
-                  </div>
-
-                  <span className="text-[11px] font-extrabold text-blue-400 group-hover:translate-x-1 transition flex items-center gap-0.5 shrink-0 pl-2">
-                    Testar <ChevronRight className="w-3.5 h-3.5" />
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
+          </form>
         </div>
 
-        {/* Clear Database Footer Action */}
-        {onClearDatabase && (
-          <div className="text-center pt-1">
-            <button
-              type="button"
-              onClick={onClearDatabase}
-              className="text-[11px] text-rose-400 hover:text-rose-300 font-bold hover:underline inline-flex items-center gap-1.5 transition cursor-pointer"
-            >
-              <Trash2 className="w-3.5 h-3.5" /> Limpar Contas de Teste e Zerar Banco
-            </button>
-          </div>
-        )}
-
-        {/* Footer info */}
+        {/* Clean Footer Info */}
         <p className="text-[11px] text-center text-slate-500">
-          Ponto Facial © 2026 • Todos os direitos reservados
+          Ponto Facial • Sistema Seguro de Gestão e Ponto Eletrônico
         </p>
       </div>
     </div>

@@ -12,7 +12,7 @@ import {
   UserRole,
   OwnerSettings,
 } from './types';
-import { INITIAL_EMPLOYEES, SAMPLE_TEST_EMPLOYEES } from './data/initialData';
+import { INITIAL_EMPLOYEES } from './data/initialData';
 import { DEFAULT_GEOFENCE, getCurrentLocation } from './utils/geolocation';
 import { calculateDayWorkedMinutes } from './utils/timeFormatters';
 import { getOwnerSettings, saveOwnerSettings } from './utils/ownerStorage';
@@ -26,7 +26,7 @@ import {
   saveOwnerSettingsToFirestore,
   clearAllEmployeesFromFirestore,
   clearAllAuditLogsFromFirestore,
-  seedInitialEmployees,
+  wipeAllDataFromFirestore,
 } from './services/firebase';
 
 import { Header } from './components/Header';
@@ -77,10 +77,10 @@ export default function App() {
     });
   };
 
-  // Persistence state
+  // Clean initial state for testing
   const [employees, setEmployees] = useState<Employee[]>(() => {
     try {
-      const saved = localStorage.getItem('sistema_ponto_funcionarios_v3');
+      const saved = localStorage.getItem('sistema_ponto_funcionarios_v4');
       if (saved !== null) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) return parsed;
@@ -91,6 +91,24 @@ export default function App() {
     }
   });
 
+  // Purge any legacy sample data on first load so user starts with a 100% clean database
+  useEffect(() => {
+    try {
+      const cleaned = localStorage.getItem('sistema_ponto_cleaned_v5');
+      if (!cleaned) {
+        localStorage.removeItem('sistema_ponto_funcionarios_v3');
+        localStorage.removeItem('sistema_ponto_funcionarios_v2');
+        localStorage.removeItem('sistema_ponto_funcionarios');
+        localStorage.removeItem('facial_audit_logs_v1');
+        localStorage.removeItem('sistema_ponto_owner_settings_v1');
+        localStorage.setItem('sistema_ponto_funcionarios_v4', JSON.stringify([]));
+        localStorage.setItem('sistema_ponto_cleaned_v5', 'true');
+        setEmployees([]);
+        wipeAllDataFromFirestore().catch(() => {});
+      }
+    } catch {}
+  }, []);
+
   const [geofence, setGeofence] = useState<CompanyGeofence>(() => {
     try {
       const saved = localStorage.getItem('sistema_ponto_geofence');
@@ -100,7 +118,7 @@ export default function App() {
     }
   });
 
-  const [currentEmpId, setCurrentEmpId] = useState<string>('emp-1');
+  const [currentEmpId, setCurrentEmpId] = useState<string>('');
   const [selectedDay, setSelectedDay] = useState<number>(() => new Date().getDate());
   const [activeTab, setActiveTab] = useState<ActiveTab>('inicio');
   const [isAdminView, setIsAdminView] = useState<boolean>(() => currentUserRole === 'GESTOR' || currentUserRole === 'PROPRIETARIO');
@@ -142,35 +160,6 @@ export default function App() {
       sessionStorage.removeItem('ponto_facial_auth');
       sessionStorage.removeItem('ponto_facial_role');
     } catch {}
-  };
-
-  // Database Reset & Sample Seed Handlers
-  const handleClearDatabase = async () => {
-    const confirmed = window.confirm('Deseja realmente limpar todas as contas de teste e zerar o banco de dados?');
-    if (!confirmed) return;
-    try {
-      localStorage.setItem('sistema_ponto_funcionarios_v3', JSON.stringify([]));
-      localStorage.removeItem('sistema_ponto_funcionarios_v2');
-      localStorage.removeItem('sistema_ponto_funcionarios');
-      localStorage.removeItem('facial_audit_logs_v1');
-      setEmployees([]);
-      await clearAllEmployeesFromFirestore();
-      await clearAllAuditLogsFromFirestore();
-      alert('Banco de dados e contas de teste limpos com sucesso! Agora você pode cadastrar seus funcionários reais.');
-    } catch (err: any) {
-      alert('Erro ao limpar banco de dados: ' + (err?.message || err));
-    }
-  };
-
-  const handleLoadSampleData = async () => {
-    try {
-      setEmployees(SAMPLE_TEST_EMPLOYEES);
-      localStorage.setItem('sistema_ponto_funcionarios_v3', JSON.stringify(SAMPLE_TEST_EMPLOYEES));
-      await seedInitialEmployees();
-      alert('Contas de demonstração carregadas com sucesso no banco de dados!');
-    } catch (err: any) {
-      alert('Erro ao carregar dados de demonstração: ' + (err?.message || err));
-    }
   };
 
   // Dynamic today number
@@ -300,7 +289,7 @@ export default function App() {
 
   // Save changes to localStorage
   useEffect(() => {
-    localStorage.setItem('sistema_ponto_funcionarios_v3', JSON.stringify(employees));
+    localStorage.setItem('sistema_ponto_funcionarios_v4', JSON.stringify(employees));
   }, [employees]);
 
   useEffect(() => {
@@ -713,10 +702,10 @@ export default function App() {
       <>
         <LoginScreen
           employees={employees}
+          ownerSettings={ownerSettings}
           onLoginSuccess={handleLoginSuccess}
           onOpenTabletKiosk={() => setShowTabletKiosk(true)}
           onOpenInstallModal={() => setIsInstallModalOpen(true)}
-          onClearDatabase={handleClearDatabase}
         />
         <InstallPwaModal
           isOpen={isInstallModalOpen}
@@ -772,8 +761,6 @@ export default function App() {
                 setActiveTab('inicio');
               }}
               employeeCount={employees.length}
-              onClearDatabase={handleClearDatabase}
-              onLoadSampleData={handleLoadSampleData}
             />
           ) : (
             <>
@@ -874,7 +861,7 @@ export default function App() {
 
               {activeTab === 'historico' && (
                 <HistoryTab
-                  employee={currentEmployee || employees[0]}
+                  employee={currentEmployee || employees[0] || null}
                   employees={employees}
                   isAdmin={currentUserRole === 'GESTOR' || isAdminView}
                   onSelectEmployee={(emp) => {
@@ -887,7 +874,7 @@ export default function App() {
 
               {activeTab === 'relatorios' && (currentUserRole === 'GESTOR' || isAdminView) && (
                 <ReportsTab
-                  employee={currentEmployee || employees[0]}
+                  employee={currentEmployee || employees[0] || null}
                   employees={employees}
                   isAdmin={true}
                   onOpenEspelhoPrint={() => setShowEspelhoModal(true)}

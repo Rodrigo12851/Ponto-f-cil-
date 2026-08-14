@@ -1,12 +1,12 @@
 {
-  "projectId": "persuasive-feather-g6pck",
-  "appId": "1:353856384334:web:95fae68f5a87b3288b421f",
-  "apiKey": "AIzaSyA9PiyhhhDD54GxSLVa-78_jaU1Sfe4d00",
-  "authDomain": "persuasive-feather-g6pck.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-geopointteam-84bf224e-946b-45ec-a3cc-81811bf6379a",
-  "storageBucket": "persuasive-feather-g6pck.firebasestorage.app",
-  "messagingSenderId": "353856384334",
-  "measurementId": "",
-  "oAuthClientId": "353856384334-oclf14ae3q92p9nptbo7rf29ut8qi4k5.apps.googleusercontent.com",
+  "projectId": "controle-agricula",
+  "appId": "1:649909303228:web:13ae8d6f1f0cf72fdd1db9",
+  "apiKey": "AIzaSyDfi7I4csKVABJQ0YIgmrICJ-Db96uXGuI",
+  "authDomain": "controle-agricula.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "controle-agricula.firebasestorage.app",
+  "messagingSenderId": "649909303228",
+  "measurementId": "G-2MTXC85ZC0",
+  "oAuthClientId": "",
   "recaptchaSiteKey": ""
 }

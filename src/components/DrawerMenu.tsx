@@ -87,12 +87,12 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
 
   const handleDrawerFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !currentEmployee) return;
 
     try {
       setIsUploading(true);
       const photoDataUrl = await processProfilePhoto(file, 400, 400, 0.88);
-      if (onUpdateEmployee) {
+      if (onUpdateEmployee && currentEmployee.id) {
         onUpdateEmployee(currentEmployee.id, { avatar: photoDataUrl });
       }
       setShowToast(true);
@@ -104,6 +104,7 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
       if (drawerFileInputRef.current) drawerFileInputRef.current.value = '';
     }
   };
+
   if (!isOpen) return null;
 
   return (
@@ -133,7 +134,7 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
 
             <button
               onClick={onClose}
-              className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition"
+              className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -148,22 +149,22 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
                     currentUserRole === 'PROPRIETARIO'
                       ? 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=200&auto=format&fit=crop&q=80'
                       : currentUserRole === 'GESTOR'
-                      ? (employees.find((e) => e.id === 'emp-3')?.avatar || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop&q=80')
-                      : currentEmployee.avatar
+                      ? (employees[0]?.avatar || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop&q=80')
+                      : (currentEmployee?.avatar || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&auto=format&fit=crop&q=80')
                   }
                   alt={
                     currentUserRole === 'PROPRIETARIO'
                       ? 'Proprietária'
                       : currentUserRole === 'GESTOR'
-                      ? (employees.find((e) => e.id === 'emp-3')?.name || 'Maria Santos')
-                      : currentEmployee.name
+                      ? (employees[0]?.name || 'Gestor de Equipe')
+                      : (currentEmployee?.name || 'Colaborador')
                   }
                   className="w-12 h-12 rounded-full object-cover border-2 border-slate-300 shadow-xs transition"
                   onClick={() => {
-                    if (currentUserRole === 'COLABORADOR') drawerFileInputRef.current?.click();
+                    if (currentUserRole === 'COLABORADOR' && currentEmployee) drawerFileInputRef.current?.click();
                   }}
                 />
-                {currentUserRole === 'COLABORADOR' && (
+                {currentUserRole === 'COLABORADOR' && currentEmployee && (
                   <button
                     type="button"
                     onClick={() => drawerFileInputRef.current?.click()}
@@ -200,20 +201,20 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
               <div className="overflow-hidden flex-1 min-w-0">
                 <p className="text-xs font-black text-slate-900 truncate">
                   {currentUserRole === 'PROPRIETARIO'
-                    ? 'Ana Oliveira'
+                    ? 'Proprietário(a)'
                     : currentUserRole === 'GESTOR'
-                    ? (employees.find((e) => e.id === 'emp-3')?.name || 'Maria Santos')
-                    : currentEmployee.name}
+                    ? (employees[0]?.name || 'Gestor de Equipe')
+                    : (currentEmployee?.name || 'Colaborador')}
                 </p>
                 <p className="text-[11px] text-slate-500 font-medium truncate">
                   {currentUserRole === 'PROPRIETARIO'
                     ? 'Proprietária & Administradora Geral'
                     : currentUserRole === 'GESTOR'
-                    ? (employees.find((e) => e.id === 'emp-3')?.role || 'Coordenadora de RH (Gestora)')
-                    : currentEmployee.role}
+                    ? (employees[0]?.role || 'Coordenador(a) de RH')
+                    : (currentEmployee?.role || 'Colaborador')}
                 </p>
 
-                {currentUserRole === 'COLABORADOR' && (
+                {currentUserRole === 'COLABORADOR' && currentEmployee && (
                   <div className="flex flex-col gap-1 mt-1.5">
                     {onOpenFaceIdRegistration && (
                       <button

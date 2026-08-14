@@ -122,6 +122,7 @@ export interface ManagerUser {
   id: string;
   name: string;
   email: string;
+  login?: string; // Login customizado (ex: gestor1, joao)
   phone?: string;
   companyName: string;
   password: string; // Senha de acesso do gestor
@@ -133,8 +134,9 @@ export interface ManagerUser {
 export interface OwnerSettings {
   ownerName: string;
   ownerEmail: string;
+  ownerLogin?: string; // Login customizado do dono (ex: 123, admin)
   companyName: string;
-  masterPassword: string; // Senha Mestra do Proprietário
+  masterPassword: string; // Senha Mestra do Proprietário (ex: 123)
   managerPassword?: string; // Senha padrão do Gestor
   managers: ManagerUser[];
 }

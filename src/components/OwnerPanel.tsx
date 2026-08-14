@@ -19,8 +19,12 @@ import {
   ShieldCheck,
   Users,
   LogIn,
+  Database,
+  Settings,
 } from 'lucide-react';
 import { OwnerSettings, ManagerUser, UserRole } from '../types';
+import { FirebaseConfigModal } from './FirebaseConfigModal';
+import { FIREBASE_PROJECT_INFO, isUsingCustomFirebaseConfig, getActiveFirebaseConfig } from '../services/firebase';
 
 interface OwnerPanelProps {
   ownerSettings: OwnerSettings;
@@ -29,8 +33,6 @@ interface OwnerPanelProps {
   onSwitchRole: (role: UserRole, managerId?: string) => void;
   onOpenManagerDashboard: () => void;
   employeeCount?: number;
-  onClearDatabase?: () => void;
-  onLoadSampleData?: () => void;
 }
 
 export const OwnerPanel: React.FC<OwnerPanelProps> = ({
@@ -40,16 +42,19 @@ export const OwnerPanel: React.FC<OwnerPanelProps> = ({
   onSwitchRole,
   onOpenManagerDashboard,
   employeeCount = 0,
-  onClearDatabase,
-  onLoadSampleData,
 }) => {
   // Modal state for Add/Edit Manager
   const [showManagerModal, setShowManagerModal] = useState<boolean>(false);
+  const [showFirebaseModal, setShowFirebaseModal] = useState<boolean>(false);
   const [editingManager, setEditingManager] = useState<ManagerUser | null>(null);
+
+  const activeFirebase = getActiveFirebaseConfig();
+  const isCustomFirebase = isUsingCustomFirebaseConfig();
 
   // Manager Form State
   const [mgrName, setMgrName] = useState<string>('');
   const [mgrEmail, setMgrEmail] = useState<string>('');
+  const [mgrLogin, setMgrLogin] = useState<string>('');
   const [mgrPhone, setMgrPhone] = useState<string>('');
   const [mgrCompany, setMgrCompany] = useState<string>(ownerSettings.companyName || 'Empresa Sede Principal');
   const [mgrPassword, setMgrPassword] = useState<string>('');
@@ -58,9 +63,11 @@ export const OwnerPanel: React.FC<OwnerPanelProps> = ({
 
   // Master Settings Modal State
   const [showMasterSettingsModal, setShowMasterSettingsModal] = useState<boolean>(false);
-  const [newMasterPassword, setNewMasterPassword] = useState<string>(ownerSettings.masterPassword);
-  const [newOwnerName, setNewOwnerName] = useState<string>(ownerSettings.ownerName);
-  const [newCompanyName, setNewCompanyName] = useState<string>(ownerSettings.companyName);
+  const [newMasterPassword, setNewMasterPassword] = useState<string>(ownerSettings.masterPassword || '123');
+  const [newOwnerName, setNewOwnerName] = useState<string>(ownerSettings.ownerName || 'Proprietário(a)');
+  const [newOwnerLogin, setNewOwnerLogin] = useState<string>(ownerSettings.ownerLogin || '123');
+  const [newOwnerEmail, setNewOwnerEmail] = useState<string>(ownerSettings.ownerEmail || '');
+  const [newCompanyName, setNewCompanyName] = useState<string>(ownerSettings.companyName || 'Minha Empresa');
 
   // Toggle Password visibility states
   const [visiblePasswords, setVisiblePasswords] = useState<{ [key: string]: boolean }>({});
@@ -288,41 +295,56 @@ export const OwnerPanel: React.FC<OwnerPanelProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-amber-400/20 border border-amber-400/30 flex items-center justify-center text-amber-300 shrink-0">
-              <Sparkles className="w-5 h-5" />
+              <Database className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-sm font-black tracking-wide text-white">
                   Banco de Dados em Nuvem: Firebase Firestore
                 </h3>
-                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Sincronização em Tempo Real Ativa
-                </span>
+                {isCustomFirebase ? (
+                  <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Conectado ao Seu Firebase
+                  </span>
+                ) : (
+                  <span className="bg-blue-500/20 text-blue-300 border border-blue-500/40 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" /> Sincronização em Tempo Real Ativa
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-300 font-medium mt-0.5">
-                Todos os dados de colaboradores, marcações de ponto, biometria facial e configurações estão salvos no Firebase.
+                Vincule sua conta Google (<strong>rs3043017@gmail.com</strong>) ou projeto customizado para gerenciar seus dados diretamente no seu console.
               </p>
             </div>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setShowFirebaseModal(true)}
+            className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs rounded-xl shadow-md transition cursor-pointer flex items-center gap-1.5 shrink-0 self-start sm:self-auto"
+          >
+            <Settings className="w-4 h-4" />
+            <span>{isCustomFirebase ? 'Alterar Firebase' : 'Conectar Minha Conta Firebase'}</span>
+          </button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
           <div className="bg-white/5 p-3 rounded-xl border border-white/10">
-            <p className="text-[10px] text-slate-400 font-bold uppercase">Projeto Firebase</p>
+            <p className="text-[10px] text-slate-400 font-bold uppercase">Projeto Firebase Ativo</p>
             <p className="font-mono font-bold text-amber-300 text-xs truncate mt-0.5">
-              persuasive-feather-g6pck
+              {activeFirebase.projectId}
             </p>
           </div>
           <div className="bg-white/5 p-3 rounded-xl border border-white/10">
             <p className="text-[10px] text-slate-400 font-bold uppercase">Base de Dados Firestore</p>
             <p className="font-mono font-bold text-slate-200 text-xs truncate mt-0.5">
-              ai-studio-geopointteam-84bf224e
+              {activeFirebase.firestoreDatabaseId || '(default)'}
             </p>
           </div>
           <div className="bg-white/5 p-3 rounded-xl border border-white/10">
-            <p className="text-[10px] text-slate-400 font-bold uppercase">Armazenamento & Segurança</p>
+            <p className="text-[10px] text-slate-400 font-bold uppercase">Status de Armazenamento</p>
             <p className="font-bold text-emerald-300 text-xs mt-0.5 flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Regras Ativas & Protegido
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Nuvem Online & Sincronizado
             </p>
           </div>
         </div>
@@ -331,31 +353,6 @@ export const OwnerPanel: React.FC<OwnerPanelProps> = ({
         <div className="pt-2 border-t border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
           <div className="text-slate-300 font-medium">
             Colaboradores no Banco: <strong className="text-white font-mono">{employeeCount} cadastrados</strong>
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap">
-            {onClearDatabase && (
-              <button
-                type="button"
-                onClick={onClearDatabase}
-                className="px-3 py-1.5 bg-rose-600/80 hover:bg-rose-600 text-white font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                title="Apagar todas as contas de teste e zerar banco de dados"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Zerar Banco de Dados</span>
-              </button>
-            )}
-            {onLoadSampleData && employeeCount === 0 && (
-              <button
-                type="button"
-                onClick={onLoadSampleData}
-                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer border border-white/20"
-                title="Carregar contas de demonstração"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                <span>Carregar Dados de Demonstração</span>
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -737,6 +734,12 @@ export const OwnerPanel: React.FC<OwnerPanelProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal: Configurar Firebase Customizado */}
+      <FirebaseConfigModal
+        isOpen={showFirebaseModal}
+        onClose={() => setShowFirebaseModal(false)}
+      />
     </div>
   );
 };

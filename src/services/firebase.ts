@@ -1,4 +1,4 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
+import { initializeApp, getApps, getApp, deleteApp } from 'firebase/app';
 import {
   getFirestore,
   collection,
@@ -13,24 +13,81 @@ import {
   writeBatch,
   deleteDoc,
 } from 'firebase/firestore';
-import firebaseConfig from '../../firebase-applet-config.json';
+import defaultFirebaseConfig from '../../firebase-applet-config.json';
 import { Employee, CompanyGeofence, OwnerSettings, FacialAuditLog } from '../types';
 import { INITIAL_EMPLOYEES, SAMPLE_TEST_EMPLOYEES } from '../data/initialData';
 import { DEFAULT_GEOFENCE } from '../utils/geolocation';
 import { DEFAULT_OWNER_SETTINGS } from '../utils/ownerStorage';
 
-// Initialize Firebase App
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+export interface FirebaseConfigObject {
+  projectId: string;
+  appId: string;
+  apiKey: string;
+  authDomain?: string;
+  firestoreDatabaseId?: string;
+  storageBucket?: string;
+  messagingSenderId?: string;
+  measurementId?: string;
+  [key: string]: any;
+}
 
-// Initialize Firestore with custom database ID from config
-export const db = firebaseConfig.firestoreDatabaseId
-  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-  : getFirestore(app);
+export function getActiveFirebaseConfig(): FirebaseConfigObject {
+  try {
+    const saved = localStorage.getItem('custom_firebase_config');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && parsed.projectId && parsed.apiKey) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn('Error reading custom firebase config from localStorage:', e);
+  }
+  return defaultFirebaseConfig;
+}
+
+export function saveCustomFirebaseConfig(config: FirebaseConfigObject): void {
+  try {
+    localStorage.setItem('custom_firebase_config', JSON.stringify(config));
+  } catch (e) {
+    console.warn('Error saving custom firebase config:', e);
+  }
+}
+
+export function resetFirebaseConfigToDefault(): void {
+  try {
+    localStorage.removeItem('custom_firebase_config');
+  } catch (e) {
+    console.warn('Error resetting firebase config:', e);
+  }
+}
+
+export function isUsingCustomFirebaseConfig(): boolean {
+  try {
+    return !!localStorage.getItem('custom_firebase_config');
+  } catch {
+    return false;
+  }
+}
+
+const activeConfig = getActiveFirebaseConfig();
+
+// Initialize Firebase App
+const app = !getApps().length ? initializeApp(activeConfig) : getApp();
+
+// Initialize Firestore with custom database ID from config if defined and not default
+export const db =
+  activeConfig.firestoreDatabaseId &&
+  activeConfig.firestoreDatabaseId !== '(default)' &&
+  activeConfig.firestoreDatabaseId.trim() !== ''
+    ? getFirestore(app, activeConfig.firestoreDatabaseId)
+    : getFirestore(app);
 
 export const FIREBASE_PROJECT_INFO = {
-  projectId: firebaseConfig.projectId,
-  databaseId: firebaseConfig.firestoreDatabaseId,
-  authDomain: firebaseConfig.authDomain,
+  projectId: activeConfig.projectId,
+  databaseId: activeConfig.firestoreDatabaseId || '(default)',
+  authDomain: activeConfig.authDomain,
+  isCustom: isUsingCustomFirebaseConfig(),
   connected: true,
 };
 
@@ -39,6 +96,34 @@ const EMPLOYEES_COLLECTION = 'employees';
 const GEOFENCE_COLLECTION = 'companyGeofence';
 const OWNER_SETTINGS_COLLECTION = 'ownerSettings';
 const FACIAL_AUDIT_COLLECTION = 'facialAuditLogs';
+
+// Safe error reporter to prevent infinite error spamming and uncaught exceptions
+let hasReportedUnavailable = false;
+let hasReportedQuotaExceeded = false;
+
+function handleFirestoreError(context: string, err: any) {
+  if (
+    err?.code === 'unavailable' ||
+    err?.message?.includes('unavailable') ||
+    err?.message?.includes('Could not reach Cloud Firestore')
+  ) {
+    if (!hasReportedUnavailable) {
+      hasReportedUnavailable = true;
+      console.info(`[Firebase Firestore] Conexão remota em espera/offline para ${context}. Modo local-first ativo com persistência instantânea.`);
+    }
+  } else if (
+    err?.code === 'resource-exhausted' ||
+    err?.message?.includes('resource-exhausted') ||
+    err?.message?.includes('Quota limit exceeded')
+  ) {
+    if (!hasReportedQuotaExceeded) {
+      hasReportedQuotaExceeded = true;
+      console.warn(`[Firebase Firestore] Quota limit para ${context}. Operando em modo local-first resiliente.`);
+    }
+  } else {
+    console.warn(`[Firebase Firestore] ${context}:`, err?.message || err);
+  }
+}
 
 // ==========================================
 // EMPLOYEES SYNC
@@ -73,27 +158,14 @@ export function subscribeEmployees(
         onUpdate(emps);
       },
       (error) => {
-        console.error('Firebase employees snapshot error:', error);
+        handleFirestoreError('subscribeEmployees', error);
         if (onError) onError(error);
       }
     );
     return unsubscribe;
   } catch (err) {
-    console.error('Error setting up employees subscription:', err);
+    handleFirestoreError('subscribeEmployees setup', err);
     return () => {};
-  }
-}
-
-// Safe error reporter to prevent infinite error spamming
-let hasReportedQuotaExceeded = false;
-function handleFirestoreError(context: string, err: any) {
-  if (err?.code === 'resource-exhausted' || err?.message?.includes('resource-exhausted') || err?.message?.includes('Quota limit exceeded')) {
-    if (!hasReportedQuotaExceeded) {
-      hasReportedQuotaExceeded = true;
-      console.warn(`[Firebase Firestore] Quota limit exceeded for ${context}. Operating smoothly in resilient local-first mode.`);
-    }
-  } else {
-    console.warn(`[Firebase Firestore] ${context}:`, err?.message || err);
   }
 }
 
@@ -127,20 +199,14 @@ export async function clearAllAuditLogsFromFirestore(): Promise<void> {
   }
 }
 
-export async function seedInitialEmployees(): Promise<void> {
+export async function wipeAllDataFromFirestore(): Promise<void> {
   try {
-    const batch = writeBatch(db);
-    for (const emp of SAMPLE_TEST_EMPLOYEES) {
-      const docRef = doc(db, EMPLOYEES_COLLECTION, emp.id);
-      batch.set(docRef, {
-        ...emp,
-        updatedAt: new Date().toISOString(),
-      });
-    }
-    await batch.commit();
-    console.log('Sample test employees populated in Firebase Firestore.');
+    await clearAllEmployeesFromFirestore();
+    await clearAllAuditLogsFromFirestore();
+    await saveOwnerSettingsToFirestore(DEFAULT_OWNER_SETTINGS);
+    console.log('Database completely wiped and reset to clean state.');
   } catch (err: any) {
-    handleFirestoreError('seedInitialEmployees', err);
+    handleFirestoreError('wipeAllDataFromFirestore', err);
   }
 }
 
@@ -195,13 +261,13 @@ export function subscribeGeofence(
         onUpdate(data);
       },
       (error) => {
-        console.error('Firebase geofence snapshot error:', error);
+        handleFirestoreError('subscribeGeofence', error);
         if (onError) onError(error);
       }
     );
     return unsubscribe;
   } catch (err) {
-    console.error('Error setting up geofence subscription:', err);
+    handleFirestoreError('subscribeGeofence setup', err);
     return () => {};
   }
 }
@@ -240,7 +306,7 @@ export function subscribeOwnerSettings(
           try {
             await saveOwnerSettingsToFirestore(DEFAULT_OWNER_SETTINGS);
           } catch (seedErr) {
-            console.error('Error seeding owner settings to Firebase:', seedErr);
+            handleFirestoreError('saveOwnerSettings default seed', seedErr);
           }
           return;
         }
@@ -248,13 +314,13 @@ export function subscribeOwnerSettings(
         onUpdate(data);
       },
       (error) => {
-        console.error('Firebase owner settings snapshot error:', error);
+        handleFirestoreError('subscribeOwnerSettings', error);
         if (onError) onError(error);
       }
     );
     return unsubscribe;
   } catch (err) {
-    console.error('Error setting up owner settings subscription:', err);
+    handleFirestoreError('subscribeOwnerSettings setup', err);
     return () => {};
   }
 }
@@ -296,13 +362,13 @@ export function subscribeFacialAuditLogs(
         onUpdate(logs);
       },
       (error) => {
-        console.error('Firebase facial audit logs snapshot error:', error);
+        handleFirestoreError('subscribeFacialAuditLogs', error);
         if (onError) onError(error);
       }
     );
     return unsubscribe;
   } catch (err) {
-    console.error('Error setting up audit logs subscription:', err);
+    handleFirestoreError('subscribeFacialAuditLogs setup', err);
     return () => {};
   }
 }

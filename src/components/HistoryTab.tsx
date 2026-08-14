@@ -27,7 +27,7 @@ import { FacialAuditLogView } from './FacialAuditLogView';
 import { getFacialAuditLogs } from '../utils/facialAuditStorage';
 
 interface HistoryTabProps {
-  employee: Employee;
+  employee?: Employee | null;
   employees?: Employee[];
   isAdmin?: boolean;
   onSelectEmployee?: (employee: Employee) => void;
@@ -60,7 +60,8 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
   const failureCount = auditLogs.filter((l) => l.result === 'FAILURE').length;
 
   // Month Statistics
-  const pastWorkedDays = employee.days.filter((d) => d.status === 'TRABALHADO' || d.status === 'EM_ANDAMENTO');
+  const employeeDays = employee?.days || [];
+  const pastWorkedDays = employeeDays.filter((d) => d.status === 'TRABALHADO' || d.status === 'EM_ANDAMENTO');
   const totalWorkedMinutes = pastWorkedDays.reduce((acc, curr) => acc + curr.workedMinutes, 0);
   const totalBalanceMinutes = pastWorkedDays.reduce((acc, curr) => acc + curr.balanceMinutes, 0);
   const totalDelayMinutes = pastWorkedDays.reduce((acc, curr) => acc + curr.delayMinutes, 0);
@@ -152,7 +153,7 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
                 key={emp.id}
                 onClick={() => onSelectEmployee && onSelectEmployee(emp)}
                 className={`p-2.5 rounded-2xl border text-left transition flex items-center gap-2 cursor-pointer ${
-                  emp.id === employee.id
+                  emp.id === employee?.id
                     ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-500/30'
                     : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
                 }`}
@@ -172,68 +173,82 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
         </div>
       )}
 
-      {/* Monthly Summary Cards Header */}
-      <div className="bg-gradient-to-br from-slate-900 to-indigo-950 rounded-3xl p-5 text-white shadow-xl border border-slate-800">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <img
-              src={employee.avatar}
-              alt={employee.name}
-              className="w-12 h-12 rounded-2xl object-cover border-2 border-white/20 shadow-md"
-            />
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 bg-blue-950/80 px-2.5 py-0.5 rounded-full border border-blue-800">
-                Histórico do Mês
-              </span>
-              <h2 className="text-base font-bold mt-1 text-white">{employee.name}</h2>
-              <p className="text-xs text-slate-300">{employee.role} • {employee.department}</p>
+      {!employee ? (
+        <div className="bg-white rounded-3xl p-8 border border-slate-200 text-center space-y-3 shadow-xs">
+          <div className="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-200 text-blue-600 mx-auto flex items-center justify-center">
+            <Calendar className="w-7 h-7" />
+          </div>
+          <h3 className="text-base font-bold text-slate-900">
+            Nenhum Colaborador Cadastrado
+          </h3>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            Não há registros de ponto para exibir. Cadastre seu primeiro colaborador no painel para acompanhar o histórico.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* Monthly Summary Cards Header */}
+          <div className="bg-gradient-to-br from-slate-900 to-indigo-950 rounded-3xl p-5 text-white shadow-xl border border-slate-800">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <img
+                  src={employee.avatar}
+                  alt={employee.name}
+                  className="w-12 h-12 rounded-2xl object-cover border-2 border-white/20 shadow-md"
+                />
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 bg-blue-950/80 px-2.5 py-0.5 rounded-full border border-blue-800">
+                    Histórico do Mês
+                  </span>
+                  <h2 className="text-base font-bold mt-1 text-white">{employee.name}</h2>
+                  <p className="text-xs text-slate-300">{employee.role} • {employee.department}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 text-center pt-2 border-t border-slate-800">
+              <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/50">
+                <p className="text-[10px] text-slate-400 font-semibold">Total Trabalhado</p>
+                <p className="text-sm font-extrabold text-blue-300 mt-0.5">
+                  {formatHoursAndMinutes(totalWorkedMinutes)}
+                </p>
+              </div>
+
+              <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/50">
+                <p className="text-[10px] text-slate-400 font-semibold">Saldo de Horas</p>
+                <p className={`text-sm font-extrabold mt-0.5 ${totalBalanceMinutes >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {formatMinutesToHours(totalBalanceMinutes)}
+                </p>
+              </div>
+
+              <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/50">
+                <p className="text-[10px] text-slate-400 font-semibold">Atrasos Acumulados</p>
+                <p className="text-sm font-extrabold text-amber-400 mt-0.5">
+                  {totalDelayMinutes} min
+                </p>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="grid grid-cols-3 gap-2 text-center pt-2 border-t border-slate-800">
-          <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/50">
-            <p className="text-[10px] text-slate-400 font-semibold">Total Trabalhado</p>
-            <p className="text-sm font-extrabold text-blue-300 mt-0.5">
-              {formatHoursAndMinutes(totalWorkedMinutes)}
-            </p>
-          </div>
+          {/* Request Manual Adjustment Bar - Only for Employee mode, NOT for Manager */}
+          {!isAdmin && (
+            <div className="flex items-center justify-between bg-blue-50 border border-blue-200/80 rounded-2xl p-3.5 mb-4">
+              <div>
+                <h4 className="text-xs font-bold text-blue-900">Esqueceu de bater o ponto?</h4>
+                <p className="text-[11px] text-blue-700">Solicite um ajuste manual ao gestor com justificativa.</p>
+              </div>
+              <button
+                onClick={() => setShowAdjustmentModal(true)}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1 shrink-0 cursor-pointer"
+              >
+                <PlusCircle className="w-3.5 h-3.5" /> Pedir Ajuste
+              </button>
+            </div>
+          )}
 
-          <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/50">
-            <p className="text-[10px] text-slate-400 font-semibold">Saldo de Horas</p>
-            <p className={`text-sm font-extrabold mt-0.5 ${totalBalanceMinutes >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-              {formatMinutesToHours(totalBalanceMinutes)}
-            </p>
-          </div>
-
-          <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/50">
-            <p className="text-[10px] text-slate-400 font-semibold">Atrasos Acumulados</p>
-            <p className="text-sm font-extrabold text-amber-400 mt-0.5">
-              {totalDelayMinutes} min
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Request Manual Adjustment Bar - Only for Employee mode, NOT for Manager */}
-      {!isAdmin && (
-        <div className="flex items-center justify-between bg-blue-50 border border-blue-200/80 rounded-2xl p-3.5 mb-4">
-          <div>
-            <h4 className="text-xs font-bold text-blue-900">Esqueceu de bater o ponto?</h4>
-            <p className="text-[11px] text-blue-700">Solicite um ajuste manual ao gestor com justificativa.</p>
-          </div>
-          <button
-            onClick={() => setShowAdjustmentModal(true)}
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1 shrink-0 cursor-pointer"
-          >
-            <PlusCircle className="w-3.5 h-3.5" /> Pedir Ajuste
-          </button>
-        </div>
-      )}
-
-      {/* Daily List Accordion */}
-      <div className="space-y-2">
-        {employee.days.map((d) => {
+          {/* Daily List Accordion */}
+          <div className="space-y-2">
+            {employeeDays.map((d) => {
           const realToday = new Date().getDate();
           const isToday = d.day === realToday;
           const isFuture = d.day > realToday;
@@ -467,6 +482,8 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
       </div>
         </>
       )}
+        </>
+      )}
 
       {/* Photo Lightbox Preview Modal */}
       {previewPhoto && (
@@ -532,7 +549,7 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
                   onChange={(e) => setAdjDay(Number(e.target.value))}
                   className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 font-semibold"
                 >
-                  {employee.days
+                  {employeeDays
                     .filter((d) => d.day <= 10)
                     .map((d) => (
                       <option key={d.day} value={d.day}>

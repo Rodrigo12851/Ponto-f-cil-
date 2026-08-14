@@ -33,7 +33,7 @@ import {
 } from 'lucide-react';
 
 interface ReportsTabProps {
-  employee: Employee;
+  employee?: Employee | null;
   employees: Employee[];
   isAdmin: boolean;
   onOpenEspelhoPrint: () => void;
@@ -41,7 +41,7 @@ interface ReportsTabProps {
 
 export const ReportsTab: React.FC<ReportsTabProps> = ({
   employee,
-  employees,
+  employees = [],
   isAdmin,
   onOpenEspelhoPrint,
 }) => {
@@ -54,11 +54,11 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
   });
 
   // Extract unique departments
-  const departments = ['TODOS', ...Array.from(new Set(employees.map((e) => e.department)))];
+  const departments = ['TODOS', ...Array.from(new Set(employees.map((e) => e.department).filter(Boolean)))];
 
   // Employee Worked Hours Chart Dataset
   const employeesWorkedHoursData = filteredEmployees.map((emp) => {
-    const totalWorkedMins = emp.days
+    const totalWorkedMins = (emp.days || [])
       .filter((d) => d.status === 'TRABALHADO' || d.status === 'EM_ANDAMENTO')
       .reduce((acc, curr) => acc + curr.workedMinutes, 0);
 
@@ -66,7 +66,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
       name: emp.name.split(' ')[0] + ' ' + (emp.name.split(' ')[1]?.[0] || '') + '.',
       fullName: emp.name,
       Horas: Number((totalWorkedMins / 60).toFixed(1)),
-      bancoMins: emp.bancoDeHorasMinutes,
+      bancoMins: emp.bancoDeHorasMinutes || 0,
     };
   });
 
@@ -75,13 +75,13 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
     return {
       name: emp.name.split(' ')[0],
       fullName: emp.name,
-      SaldoHoras: Number((emp.bancoDeHorasMinutes / 60).toFixed(1)),
+      SaldoHoras: Number(((emp.bancoDeHorasMinutes || 0) / 60).toFixed(1)),
     };
   });
 
   // Employee Delay Dataset
   const employeesDelayData = filteredEmployees.map((emp) => {
-    const totalDelay = emp.days.reduce((acc, curr) => acc + (curr.delayMinutes || 0), 0);
+    const totalDelay = (emp.days || []).reduce((acc, curr) => acc + (curr.delayMinutes || 0), 0);
     return {
       name: emp.name.split(' ')[0],
       fullName: emp.name,
@@ -91,11 +91,11 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
 
   // Team Punctuality Pie chart dataset
   const totalOnTimePunches = filteredEmployees.reduce((acc, emp) => {
-    return acc + emp.days.filter((d) => d.status === 'TRABALHADO' && d.delayMinutes === 0).length;
+    return acc + (emp.days || []).filter((d) => d.status === 'TRABALHADO' && d.delayMinutes === 0).length;
   }, 0);
 
   const totalDelayedPunches = filteredEmployees.reduce((acc, emp) => {
-    return acc + emp.days.filter((d) => d.status === 'TRABALHADO' && d.delayMinutes > 0).length;
+    return acc + (emp.days || []).filter((d) => d.status === 'TRABALHADO' && d.delayMinutes > 0).length;
   }, 0);
 
   const pieTeamData = [
@@ -104,7 +104,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
   ];
 
   // Individual Employee Daily Chart (For non-admin employee view)
-  const dailyChartData = employee.days
+  const dailyChartData = (employee?.days || [])
     .filter((d) => d.day <= 10 && d.status !== 'FOLGA')
     .map((d) => ({
       dia: `Dia ${d.day}`,

@@ -8,7 +8,7 @@ import {
 import { Printer, X, ShieldCheck, CheckCircle2 } from 'lucide-react';
 
 interface EspelhoPontoPrintProps {
-  employee: Employee;
+  employee?: Employee | null;
   onClose: () => void;
 }
 
@@ -16,6 +16,17 @@ export const EspelhoPontoPrint: React.FC<EspelhoPontoPrintProps> = ({
   employee,
   onClose,
 }) => {
+  if (!employee || !employee.days) {
+    return (
+      <div className="fixed inset-0 z-50 bg-slate-950/90 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl p-6 text-center space-y-3 max-w-sm w-full">
+          <p className="text-sm font-bold text-slate-800">Nenhum colaborador selecionado para o Espelho de Ponto.</p>
+          <button onClick={onClose} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold cursor-pointer">Fechar</button>
+        </div>
+      </div>
+    );
+  }
+
   const pastWorkedDays = employee.days.filter((d) => d.status === 'TRABALHADO' || d.status === 'EM_ANDAMENTO');
   const totalWorkedMinutes = pastWorkedDays.reduce((acc, curr) => acc + curr.workedMinutes, 0);
   const totalBalanceMinutes = pastWorkedDays.reduce((acc, curr) => acc + curr.balanceMinutes, 0);

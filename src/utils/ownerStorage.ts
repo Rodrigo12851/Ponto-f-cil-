@@ -1,37 +1,15 @@
-import { OwnerSettings, ManagerUser } from '../types';
+import { OwnerSettings } from '../types';
 
 export const DEFAULT_OWNER_SETTINGS: OwnerSettings = {
-  ownerName: 'Rodrigo Santos (Proprietário)',
-  ownerEmail: 'proprietario@empresa.com',
-  companyName: 'Ponto Facial - Sede Principal',
-  masterPassword: '123', // Senha Mestra do Proprietário
-  managers: [
-    {
-      id: 'mgr-1',
-      name: 'Carlos Oliveira (Gestor)',
-      email: 'gestor@empresa.com',
-      phone: '(11) 98888-7777',
-      companyName: 'Ponto Facial - Sede Principal',
-      password: '123',
-      roleLabel: 'Gerente de Operações & RH',
-      status: 'ATIVO',
-      createdAt: '10/01/2026',
-    },
-    {
-      id: 'mgr-2',
-      name: 'Mariana Santos (Supervisora)',
-      email: 'mariana@empresa.com',
-      phone: '(11) 97777-6666',
-      companyName: 'Ponto Facial - Filial Sul',
-      password: '456',
-      roleLabel: 'Supervisora de Equipe',
-      status: 'ATIVO',
-      createdAt: '15/02/2026',
-    },
-  ],
+  ownerName: 'Proprietário(a)',
+  ownerEmail: '',
+  ownerLogin: '123',
+  companyName: 'Minha Empresa',
+  masterPassword: '123', // Senha Mestra inicial (1 a 3)
+  managers: [],
 };
 
-const STORAGE_KEY = 'sistema_ponto_owner_settings_v1';
+const STORAGE_KEY = 'sistema_ponto_owner_settings_v2';
 
 export function getOwnerSettings(): OwnerSettings {
   try {
@@ -41,7 +19,7 @@ export function getOwnerSettings(): OwnerSettings {
     return {
       ...DEFAULT_OWNER_SETTINGS,
       ...parsed,
-      managers: Array.isArray(parsed.managers) ? parsed.managers : DEFAULT_OWNER_SETTINGS.managers,
+      managers: Array.isArray(parsed.managers) ? parsed.managers : [],
     };
   } catch {
     return DEFAULT_OWNER_SETTINGS;

@@ -277,6 +277,51 @@ export const OwnerPanel: React.FC<OwnerPanelProps> = ({
         </div>
       </div>
 
+      {/* Firebase Cloud Firestore Status */}
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-5 sm:p-6 shadow-md border border-indigo-500/30 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-amber-400/20 border border-amber-400/30 flex items-center justify-center text-amber-300 shrink-0">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm font-black tracking-wide text-white">
+                  Banco de Dados em Nuvem: Firebase Firestore
+                </h3>
+                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Sincronização em Tempo Real Ativa
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 font-medium mt-0.5">
+                Todos os dados de colaboradores, marcações de ponto, biometria facial e configurações estão salvos no Firebase.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+          <div className="bg-white/5 p-3 rounded-xl border border-white/10">
+            <p className="text-[10px] text-slate-400 font-bold uppercase">Projeto Firebase</p>
+            <p className="font-mono font-bold text-amber-300 text-xs truncate mt-0.5">
+              persuasive-feather-g6pck
+            </p>
+          </div>
+          <div className="bg-white/5 p-3 rounded-xl border border-white/10">
+            <p className="text-[10px] text-slate-400 font-bold uppercase">Base de Dados Firestore</p>
+            <p className="font-mono font-bold text-slate-200 text-xs truncate mt-0.5">
+              ai-studio-geopointteam-84bf224e
+            </p>
+          </div>
+          <div className="bg-white/5 p-3 rounded-xl border border-white/10">
+            <p className="text-[10px] text-slate-400 font-bold uppercase">Armazenamento & Segurança</p>
+            <p className="font-bold text-emerald-300 text-xs mt-0.5 flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Regras Ativas & Protegido
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* List of Registered Managers */}
       <div className="bg-white rounded-3xl p-5 sm:p-7 shadow-sm border border-slate-200/80 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">

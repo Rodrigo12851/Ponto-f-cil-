@@ -1,0 +1,96 @@
+{
+  "entities": {
+    "Employee": {
+      "collection": "employees",
+      "fields": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "department": { "type": "string" },
+        "avatar": { "type": "string" },
+        "email": { "type": "string" },
+        "cpf": { "type": "string" },
+        "pispasep": { "type": "string" },
+        "admissionDate": { "type": "string" },
+        "workSchedule": { "type": "string" },
+        "scheduleType": { "type": "string" },
+        "includesSundays": { "type": "boolean" },
+        "dailyTargetHours": { "type": "number" },
+        "weeklyTargetHours": { "type": "number" },
+        "bankModeEnabled": { "type": "boolean" },
+        "isOnline": { "type": "boolean" },
+        "lastPunchType": { "type": "string" },
+        "lastPunchTime": { "type": "string" },
+        "bancoDeHorasMinutes": { "type": "number" },
+        "lunchMode": { "type": "string" },
+        "lunchDurationMinutes": { "type": "number" },
+        "lunchScheduledTime": { "type": "string" },
+        "allowPersonalPunch": { "type": "boolean" },
+        "facialPhotos": { "type": "array" },
+        "days": { "type": "array" },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "CompanyGeofence": {
+      "collection": "companyGeofence",
+      "fields": {
+        "name": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "radiusMeters": { "type": "number" },
+        "address": { "type": "string" },
+        "shapeType": { "type": "string" },
+        "squarePerimeter": { "type": "map" },
+        "customPoints": { "type": "array" },
+        "enforceGeofence": { "type": "boolean" },
+        "wifiEnabled": { "type": "boolean" },
+        "wifiSsid": { "type": "string" },
+        "wifiPassword": { "type": "string" },
+        "trustedWifiEnabled": { "type": "boolean" },
+        "trustedWifiSsid": { "type": "string" },
+        "trustedWifiSsids": { "type": "array" },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "OwnerSettings": {
+      "collection": "ownerSettings",
+      "fields": {
+        "ownerName": { "type": "string" },
+        "ownerEmail": { "type": "string" },
+        "companyName": { "type": "string" },
+        "masterPassword": { "type": "string" },
+        "managerPassword": { "type": "string" },
+        "managers": { "type": "array" },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "FacialAuditLog": {
+      "collection": "facialAuditLogs",
+      "fields": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "formattedDate": { "type": "string" },
+        "formattedTime": { "type": "string" },
+        "attemptType": { "type": "string" },
+        "result": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "employeeName": { "type": "string" },
+        "employeeAvatar": { "type": "string" },
+        "employeeRole": { "type": "string" },
+        "employeeDepartment": { "type": "string" },
+        "confidence": { "type": "number" },
+        "minThreshold": { "type": "number" },
+        "faceCount": { "type": "number" },
+        "stageFailed": { "type": "string" },
+        "errorCode": { "type": "string" },
+        "failureReason": { "type": "string" },
+        "debugInfo": { "type": "string" },
+        "qualityMetrics": { "type": "map" },
+        "photoSnapshot": { "type": "string" },
+        "deviceLabel": { "type": "string" },
+        "ipOrLocation": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
+    }
+  }
+}

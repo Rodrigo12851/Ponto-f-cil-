@@ -97,8 +97,15 @@ export async function validateFacePresenceAndQuality(
 }
 
 /**
- * 1:1 Biometric Comparison (Live capture vs Specific Employee's registered Avatar and 3D Face ID angles)
- * Runs STAGE 1 (Single face count & quality) FIRST. Only if passed, runs STAGE 2 (Biometric matching).
+ * 1:1 Biometric Comparison (Live capture vs Specific Employee's registered Avatar in Firestore)
+ * 
+ * Multi-Stage Verification:
+ * [STAGE 1 - PRÉ-FILTRO RIGOROSO]
+ * 1. Exige a detecção de exatamente UM (1) único rosto humano.
+ * 2. Exige nitidez e qualidade da imagem (sem desfoque, iluminação adequada, sem obstruções).
+ * [STAGE 2 - COMPARAÇÃO EXCLUSIVA COM AVATAR DO FIRESTORE]
+ * 3. Compara os traços biométricos exclusivamente com o avatar oficial cadastrado no Firestore.
+ * 4. Bloqueia o acesso caso a similaridade seja inferior a 90%.
  */
 export async function verifyEmployeeFaceAgainstAvatar(
   capturedDataUrl: string,
@@ -115,107 +122,103 @@ export async function verifyEmployeeFaceAgainstAvatar(
       };
     }
 
+    // Strict validation: Verify registered Firestore avatar presence
+    if (!employee.avatar || employee.avatar.trim().length < 15) {
+      return {
+        success: false,
+        error: 'FACE_NOT_MATCHED',
+        errorMessage: `Face not recognized. O colaborador ${employee.name} não possui avatar oficial cadastrado no Firestore para comparação.`,
+        confidence: 0,
+        stageFailed: 'BIOMETRIC_MATCH',
+      };
+    }
+
     const capturedImg = await loadImage(capturedDataUrl);
 
     // =========================================================================
-    // STAGE 1: Multi-stage Pre-validation (Exact 1 Face + Quality Verification)
+    // STAGE 1: PRÉ-FILTRO RIGOROSO (Exatamente 1 Rosto Humano Nítido e Iluminado)
     // =========================================================================
     const preValidation = await executeStage1PreValidation(capturedImg);
     if (!preValidation.passed) {
       return {
         success: false,
         error: preValidation.errorCode || 'NO_FACE_DETECTED',
-        errorMessage: preValidation.errorMessage || 'Validação facial reprovada na etapa de qualidade.',
+        errorMessage: preValidation.errorMessage || 'Pré-filtro reprovado: Rosto não identificado ou qualidade insuficiente.',
         confidence: 0,
         faceCount: preValidation.faceCount,
         stageFailed: preValidation.stageFailed,
         quality: preValidation.quality,
-        debugInfo: `Falha na Etapa 1: ${preValidation.stageFailed} (${preValidation.errorCode})`,
+        debugInfo: `Pré-filtro reprovado na etapa: ${preValidation.stageFailed} (${preValidation.errorCode})`,
       };
     }
 
     // =========================================================================
-    // STAGE 2: Biometric Comparison against Registered Employee's Profile
+    // STAGE 2: COMPARAÇÃO BIOMÉTRICA EXCLUSIVA COM O AVATAR DO FIRESTORE
     // =========================================================================
     const capturedDescriptor = extractFacialDescriptor(capturedImg, preValidation.cropRect);
     if (!capturedDescriptor) {
       return {
         success: false,
         error: 'INSUFFICIENT_QUALITY',
-        errorMessage: 'Qualidade insuficiente: Não foi possível extrair os traços biométricos do rosto. Mantenha-se centralizado.',
+        errorMessage: 'Qualidade insuficiente: Rosto não nítido. Não foi possível extrair traços biométricos. Mantenha a câmera estável.',
         confidence: 0,
         stageFailed: 'IMAGE_QUALITY',
       };
     }
 
-    // Collect all registered official photos for the employee
-    const referencePhotos: string[] = [];
-    if (employee.avatar && employee.avatar.length > 20) {
-      referencePhotos.push(employee.avatar);
-    }
-    if (employee.facialPhotos && employee.facialPhotos.length > 0) {
-      for (const photo of employee.facialPhotos) {
-        if (photo && photo.length > 20 && !referencePhotos.includes(photo)) {
-          referencePhotos.push(photo);
-        }
-      }
-    }
-
-    if (referencePhotos.length === 0) {
+    // Load and extract descriptor exclusively from employee's registered Firestore avatar
+    let refImg: HTMLImageElement;
+    try {
+      refImg = await loadImage(employee.avatar);
+    } catch (loadErr) {
       return {
         success: false,
-        error: 'FACE_NOT_MATCHED',
-        errorMessage: `Face not recognized. O colaborador ${employee.name} não possui foto ou Face ID 3D cadastrado no sistema.`,
+        error: 'IMAGE_ERROR',
+        errorMessage: `Não foi possível carregar o avatar cadastrado no Firestore de ${employee.name}. Verifique a imagem de perfil.`,
         confidence: 0,
         stageFailed: 'BIOMETRIC_MATCH',
       };
     }
 
-    // Compare live descriptor against all reference photos/angles
-    let highestScorePct = 0;
-    let bestCorrelation = -1;
-
-    for (const refSrc of referencePhotos) {
-      try {
-        const refImg = await loadImage(refSrc);
-        const refDescriptor = extractFacialDescriptor(refImg);
-        if (refDescriptor) {
-          const rawCorrelation = calculateZeroMeanCorrelation(capturedDescriptor, refDescriptor);
-          const scorePct = convertCorrelationToPercentage(rawCorrelation);
-          if (scorePct > highestScorePct) {
-            highestScorePct = scorePct;
-            bestCorrelation = rawCorrelation;
-          }
-        }
-      } catch (e) {
-        // Skip corrupted reference photo URL
-      }
+    const refDescriptor = extractFacialDescriptor(refImg);
+    if (!refDescriptor) {
+      return {
+        success: false,
+        error: 'INSUFFICIENT_QUALITY',
+        errorMessage: `O avatar oficial cadastrado no Firestore de ${employee.name} possui baixa nitidez. Atualize a foto no cadastro.`,
+        confidence: 0,
+        stageFailed: 'BIOMETRIC_MATCH',
+      };
     }
 
-    // Strict 90% Threshold Verification
-    if (highestScorePct < minThresholdPct) {
+    // Calculate Zero-Mean Pearson Correlation exclusively against Firestore avatar
+    const rawCorrelation = calculateZeroMeanCorrelation(capturedDescriptor, refDescriptor);
+    const scorePct = convertCorrelationToPercentage(rawCorrelation);
+
+    // Strict 90% threshold verification: Block access if not matching
+    if (scorePct < minThresholdPct) {
       return {
         success: false,
         error: 'FACE_NOT_MATCHED',
-        errorMessage: `Face not recognized. Rosto não reconhecido com a biometria cadastrada de ${employee.name} (Similaridade obtida: ${highestScorePct}%, exigida: ≥${minThresholdPct}%).`,
-        confidence: highestScorePct,
+        errorMessage: `Face not recognized. Rosto capturado não corresponde ao avatar oficial cadastrado no Firestore para ${employee.name} (Similaridade: ${scorePct}%, exigido: ≥${minThresholdPct}%). Acesso bloqueado.`,
+        confidence: scorePct,
         stageFailed: 'BIOMETRIC_MATCH',
         faceCount: 1,
         quality: preValidation.quality,
-        debugInfo: `Rejeitado na Etapa 2: ${highestScorePct}% < ${minThresholdPct}% (rawCorr: ${bestCorrelation.toFixed(3)})`,
+        debugInfo: `Rejeitado na Comparação com Firestore: ${scorePct}% < ${minThresholdPct}% (rawCorr: ${rawCorrelation.toFixed(3)})`,
       };
     }
 
     return {
       success: true,
       matchedEmployee: employee,
-      confidence: highestScorePct,
+      confidence: scorePct,
       faceCount: 1,
       quality: preValidation.quality,
-      debugInfo: `Face reconhecida com sucesso! (${highestScorePct}% compatibilidade com ${employee.name})`,
+      debugInfo: `Face confirmada com sucesso contra o avatar do Firestore (${scorePct}% similaridade com ${employee.name})`,
     };
   } catch (err: any) {
-    console.error('Error during 1:1 facial verification:', err);
+    console.error('Error during 1:1 facial verification against Firestore avatar:', err);
     return {
       success: false,
       error: 'IMAGE_ERROR',
@@ -227,7 +230,8 @@ export async function verifyEmployeeFaceAgainstAvatar(
 
 /**
  * 1:N Biometric Recognition for Tablet Kiosk.
- * Runs STAGE 1 (Single face count & quality) FIRST. Only if passed, runs STAGE 2 (Compare against all enrolled employees).
+ * Runs STAGE 1 (Single sharp face count & quality pre-filter) FIRST.
+ * Only if passed, runs STAGE 2 (Compare strictly against each employee's registered Firestore avatar).
  */
 export async function verifyAndRecognizeFace(
   capturedDataUrl: string,
@@ -247,14 +251,14 @@ export async function verifyAndRecognizeFace(
     const img = await loadImage(capturedDataUrl);
 
     // =========================================================================
-    // STAGE 1: Multi-stage Pre-validation (Exact 1 Face + Quality Verification)
+    // STAGE 1: PRÉ-FILTRO RIGOROSO (Exatamente 1 Rosto Humano Nítido e Iluminado)
     // =========================================================================
     const preValidation = await executeStage1PreValidation(img);
     if (!preValidation.passed) {
       return {
         success: false,
         error: preValidation.errorCode || 'NO_FACE_DETECTED',
-        errorMessage: preValidation.errorMessage || 'Validação facial reprovada na etapa de qualidade.',
+        errorMessage: preValidation.errorMessage || 'Pré-filtro reprovado: Rosto não identificado ou qualidade insuficiente.',
         confidence: 0,
         faceCount: preValidation.faceCount,
         stageFailed: preValidation.stageFailed,
@@ -264,14 +268,14 @@ export async function verifyAndRecognizeFace(
     }
 
     // =========================================================================
-    // STAGE 2: Biometric Recognition against Database
+    // STAGE 2: Reconhecimento Biométrico Exclusivo contra Avatares do Firestore
     // =========================================================================
     const capturedDescriptor = extractFacialDescriptor(img, preValidation.cropRect);
     if (!capturedDescriptor) {
       return {
         success: false,
         error: 'INSUFFICIENT_QUALITY',
-        errorMessage: 'Qualidade insuficiente: Não foi possível extrair traços faciais nítidos. Melhore a iluminação e olhe para a câmera.',
+        errorMessage: 'Qualidade insuficiente: Rosto não nítido. Não foi possível extrair traços faciais. Mantenha a câmera estável.',
         confidence: 0,
         stageFailed: 'IMAGE_QUALITY',
       };
@@ -280,40 +284,25 @@ export async function verifyAndRecognizeFace(
     let bestMatch: { employee: Employee; scorePct: number } | null = null;
 
     for (const emp of employees) {
-      const referencePhotos: string[] = [];
-      if (emp.avatar && emp.avatar.length > 20) {
-        referencePhotos.push(emp.avatar);
-      }
-      if (emp.facialPhotos && emp.facialPhotos.length > 0) {
-        for (const p of emp.facialPhotos) {
-          if (p && p.length > 20 && !referencePhotos.includes(p)) {
-            referencePhotos.push(p);
-          }
-        }
+      // Strictly use only the official avatar registered in Firestore
+      if (!emp.avatar || emp.avatar.trim().length < 15) {
+        continue;
       }
 
-      let maxEmpScorePct = 0;
-
-      for (const refPhoto of referencePhotos) {
-        try {
-          const refImg = await loadImage(refPhoto);
-          const refDescriptor = extractFacialDescriptor(refImg);
-          if (refDescriptor) {
-            const rawCorr = calculateZeroMeanCorrelation(capturedDescriptor, refDescriptor);
-            const scorePct = convertCorrelationToPercentage(rawCorr);
-            if (scorePct > maxEmpScorePct) {
-              maxEmpScorePct = scorePct;
+      try {
+        const refImg = await loadImage(emp.avatar);
+        const refDescriptor = extractFacialDescriptor(refImg);
+        if (refDescriptor) {
+          const rawCorr = calculateZeroMeanCorrelation(capturedDescriptor, refDescriptor);
+          const scorePct = convertCorrelationToPercentage(rawCorr);
+          if (scorePct > 0) {
+            if (!bestMatch || scorePct > bestMatch.scorePct) {
+              bestMatch = { employee: emp, scorePct };
             }
           }
-        } catch (e) {
-          // Skip broken photo
         }
-      }
-
-      if (maxEmpScorePct > 0) {
-        if (!bestMatch || maxEmpScorePct > bestMatch.scorePct) {
-          bestMatch = { employee: emp, scorePct: maxEmpScorePct };
-        }
+      } catch (e) {
+        // Skip unparseable image
       }
     }
 
@@ -323,14 +312,14 @@ export async function verifyAndRecognizeFace(
       return {
         success: false,
         error: 'FACE_NOT_MATCHED',
-        errorMessage: `Face not recognized. Rosto não reconhecido no banco de dados da empresa (Similaridade obtida: ${bestScorePct}%, exigida: ≥${minThresholdPct}%).`,
+        errorMessage: `Face not recognized. Rosto não reconhecido nos cadastros de avatares do Firestore (Similaridade máxima obtida: ${bestScorePct}%, exigida: ≥${minThresholdPct}%). Acesso bloqueado.`,
         confidence: bestScorePct,
         stageFailed: 'BIOMETRIC_MATCH',
         faceCount: 1,
         quality: preValidation.quality,
         debugInfo: bestMatch
-          ? `Similaridade máxima obtida: ${bestScorePct}% (Mínimo exigido: ${minThresholdPct}%)`
-          : 'Nenhum perfil cadastrado para comparação',
+          ? `Similaridade máxima com Firestore: ${bestScorePct}% (Mínimo exigido: ${minThresholdPct}%)`
+          : 'Nenhum avatar cadastrado no Firestore disponível para comparação',
       };
     }
 
@@ -340,10 +329,10 @@ export async function verifyAndRecognizeFace(
       confidence: bestMatch.scorePct,
       faceCount: 1,
       quality: preValidation.quality,
-      debugInfo: `Face ID Autenticado com sucesso (${bestMatch.scorePct}% compatibilidade: ${bestMatch.employee.name})`,
+      debugInfo: `Face ID Autenticado com sucesso contra Firestore (${bestMatch.scorePct}% compatibilidade: ${bestMatch.employee.name})`,
     };
   } catch (error: any) {
-    console.error('Error during biometric verification:', error);
+    console.error('Error during biometric verification against Firestore:', error);
     return {
       success: false,
       error: 'IMAGE_ERROR',

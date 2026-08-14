@@ -1,0 +1,286 @@
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import {
+  getFirestore,
+  collection,
+  doc,
+  setDoc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  orderBy,
+  limit,
+  writeBatch,
+  deleteDoc,
+} from 'firebase/firestore';
+import firebaseConfig from '../../firebase-applet-config.json';
+import { Employee, CompanyGeofence, OwnerSettings, FacialAuditLog } from '../types';
+import { INITIAL_EMPLOYEES } from '../data/initialData';
+import { DEFAULT_GEOFENCE } from '../utils/geolocation';
+import { DEFAULT_OWNER_SETTINGS } from '../utils/ownerStorage';
+
+// Initialize Firebase App
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+
+// Initialize Firestore with custom database ID from config
+export const db = firebaseConfig.firestoreDatabaseId
+  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+  : getFirestore(app);
+
+export const FIREBASE_PROJECT_INFO = {
+  projectId: firebaseConfig.projectId,
+  databaseId: firebaseConfig.firestoreDatabaseId,
+  authDomain: firebaseConfig.authDomain,
+  connected: true,
+};
+
+// Collections
+const EMPLOYEES_COLLECTION = 'employees';
+const GEOFENCE_COLLECTION = 'companyGeofence';
+const OWNER_SETTINGS_COLLECTION = 'ownerSettings';
+const FACIAL_AUDIT_COLLECTION = 'facialAuditLogs';
+
+// ==========================================
+// EMPLOYEES SYNC
+// ==========================================
+
+export function subscribeEmployees(
+  onUpdate: (employees: Employee[]) => void,
+  onError?: (err: Error) => void
+): () => void {
+  try {
+    const colRef = collection(db, EMPLOYEES_COLLECTION);
+    const unsubscribe = onSnapshot(
+      colRef,
+      async (snapshot) => {
+        if (snapshot.empty) {
+          console.log('Firebase employees collection is empty, seeding initial employees...');
+          try {
+            await seedInitialEmployees();
+          } catch (seedErr) {
+            console.error('Error seeding initial employees to Firebase:', seedErr);
+          }
+          return;
+        }
+
+        const emps: Employee[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as Employee;
+          emps.push({
+            ...data,
+            id: docSnap.id,
+            days: Array.isArray(data.days) ? data.days : [],
+          });
+        });
+
+        // Ensure employees are stably ordered
+        emps.sort((a, b) => a.id.localeCompare(b.id));
+        onUpdate(emps);
+      },
+      (error) => {
+        console.error('Firebase employees snapshot error:', error);
+        if (onError) onError(error);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.error('Error setting up employees subscription:', err);
+    return () => {};
+  }
+}
+
+export async function seedInitialEmployees(): Promise<void> {
+  try {
+    const batch = writeBatch(db);
+    for (const emp of INITIAL_EMPLOYEES) {
+      const docRef = doc(db, EMPLOYEES_COLLECTION, emp.id);
+      batch.set(docRef, {
+        ...emp,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    await batch.commit();
+    console.log('Initial employees successfully seeded to Firebase Firestore.');
+  } catch (err) {
+    console.error('Error seeding employees in batch:', err);
+  }
+}
+
+export async function saveEmployeeToFirestore(employee: Employee): Promise<void> {
+  try {
+    const docRef = doc(db, EMPLOYEES_COLLECTION, employee.id);
+    await setDoc(
+      docRef,
+      {
+        ...employee,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.error(`Error saving employee ${employee.id} to Firestore:`, err);
+    throw err;
+  }
+}
+
+export async function deleteEmployeeFromFirestore(employeeId: string): Promise<void> {
+  try {
+    const docRef = doc(db, EMPLOYEES_COLLECTION, employeeId);
+    await deleteDoc(docRef);
+  } catch (err) {
+    console.error(`Error deleting employee ${employeeId} from Firestore:`, err);
+    throw err;
+  }
+}
+
+// ==========================================
+// GEOFENCE & COMPANY SYNC
+// ==========================================
+
+export function subscribeGeofence(
+  onUpdate: (geofence: CompanyGeofence) => void,
+  onError?: (err: Error) => void
+): () => void {
+  try {
+    const docRef = doc(db, GEOFENCE_COLLECTION, 'main');
+    const unsubscribe = onSnapshot(
+      docRef,
+      async (snapshot) => {
+        if (!snapshot.exists()) {
+          console.log('Firebase geofence config empty, seeding default...');
+          try {
+            await saveGeofenceToFirestore(DEFAULT_GEOFENCE);
+          } catch (seedErr) {
+            console.error('Error seeding default geofence to Firebase:', seedErr);
+          }
+          return;
+        }
+        const data = snapshot.data() as CompanyGeofence;
+        onUpdate(data);
+      },
+      (error) => {
+        console.error('Firebase geofence snapshot error:', error);
+        if (onError) onError(error);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.error('Error setting up geofence subscription:', err);
+    return () => {};
+  }
+}
+
+export async function saveGeofenceToFirestore(geofence: CompanyGeofence): Promise<void> {
+  try {
+    const docRef = doc(db, GEOFENCE_COLLECTION, 'main');
+    await setDoc(
+      docRef,
+      {
+        ...geofence,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.error('Error saving geofence to Firestore:', err);
+    throw err;
+  }
+}
+
+// ==========================================
+// OWNER & MANAGERS SETTINGS SYNC
+// ==========================================
+
+export function subscribeOwnerSettings(
+  onUpdate: (settings: OwnerSettings) => void,
+  onError?: (err: Error) => void
+): () => void {
+  try {
+    const docRef = doc(db, OWNER_SETTINGS_COLLECTION, 'main');
+    const unsubscribe = onSnapshot(
+      docRef,
+      async (snapshot) => {
+        if (!snapshot.exists()) {
+          console.log('Firebase owner settings empty, seeding default...');
+          try {
+            await saveOwnerSettingsToFirestore(DEFAULT_OWNER_SETTINGS);
+          } catch (seedErr) {
+            console.error('Error seeding owner settings to Firebase:', seedErr);
+          }
+          return;
+        }
+        const data = snapshot.data() as OwnerSettings;
+        onUpdate(data);
+      },
+      (error) => {
+        console.error('Firebase owner settings snapshot error:', error);
+        if (onError) onError(error);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.error('Error setting up owner settings subscription:', err);
+    return () => {};
+  }
+}
+
+export async function saveOwnerSettingsToFirestore(settings: OwnerSettings): Promise<void> {
+  try {
+    const docRef = doc(db, OWNER_SETTINGS_COLLECTION, 'main');
+    await setDoc(
+      docRef,
+      {
+        ...settings,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.error('Error saving owner settings to Firestore:', err);
+    throw err;
+  }
+}
+
+// ==========================================
+// FACIAL AUDIT LOGS SYNC
+// ==========================================
+
+export function subscribeFacialAuditLogs(
+  onUpdate: (logs: FacialAuditLog[]) => void,
+  onError?: (err: Error) => void
+): () => void {
+  try {
+    const colRef = collection(db, FACIAL_AUDIT_COLLECTION);
+    const q = query(colRef, orderBy('timestamp', 'desc'), limit(150));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const logs: FacialAuditLog[] = [];
+        snapshot.forEach((docSnap) => {
+          logs.push(docSnap.data() as FacialAuditLog);
+        });
+        onUpdate(logs);
+      },
+      (error) => {
+        console.error('Firebase facial audit logs snapshot error:', error);
+        if (onError) onError(error);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.error('Error setting up audit logs subscription:', err);
+    return () => {};
+  }
+}
+
+export async function addFacialAuditLogToFirestore(log: FacialAuditLog): Promise<void> {
+  try {
+    const docRef = doc(db, FACIAL_AUDIT_COLLECTION, log.id);
+    await setDoc(docRef, {
+      ...log,
+      createdAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('Error writing facial audit log to Firestore:', err);
+  }
+}

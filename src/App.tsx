@@ -17,6 +17,14 @@ import { DEFAULT_GEOFENCE, getCurrentLocation } from './utils/geolocation';
 import { calculateDayWorkedMinutes } from './utils/timeFormatters';
 import { getOwnerSettings, saveOwnerSettings } from './utils/ownerStorage';
 import { requestScreenWakeLock, releaseScreenWakeLock } from './utils/wakeLock';
+import {
+  subscribeEmployees,
+  saveEmployeeToFirestore,
+  subscribeGeofence,
+  saveGeofenceToFirestore,
+  subscribeOwnerSettings,
+  saveOwnerSettingsToFirestore,
+} from './services/firebase';
 
 import { Header } from './components/Header';
 import { CalendarStrip } from './components/CalendarStrip';
@@ -59,6 +67,9 @@ export default function App() {
   const handleUpdateOwnerSettings = (newSettings: OwnerSettings) => {
     setOwnerSettings(newSettings);
     saveOwnerSettings(newSettings);
+    saveOwnerSettingsToFirestore(newSettings).catch((err) => {
+      console.warn('Could not sync owner settings to Firestore:', err);
+    });
   };
   // Persistence state
   const [employees, setEmployees] = useState<Employee[]>(() => {
@@ -237,13 +248,49 @@ export default function App() {
     distanceMeters: 12,
   });
 
-  // Save changes to localStorage
+  // Real-time Firestore Subscriptions on Mount
+  useEffect(() => {
+    const unsubEmployees = subscribeEmployees((remoteEmployees) => {
+      if (remoteEmployees && remoteEmployees.length > 0) {
+        setEmployees(remoteEmployees);
+      }
+    });
+
+    const unsubGeofence = subscribeGeofence((remoteGeofence) => {
+      if (remoteGeofence) {
+        setGeofence(remoteGeofence);
+      }
+    });
+
+    const unsubOwner = subscribeOwnerSettings((remoteOwner) => {
+      if (remoteOwner) {
+        setOwnerSettings(remoteOwner);
+      }
+    });
+
+    return () => {
+      unsubEmployees();
+      unsubGeofence();
+      unsubOwner();
+    };
+  }, []);
+
+  // Save changes to localStorage and Firestore
   useEffect(() => {
     localStorage.setItem('sistema_ponto_funcionarios_v3', JSON.stringify(employees));
+    // Sync employees to Firestore asynchronously
+    employees.forEach((emp) => {
+      saveEmployeeToFirestore(emp).catch((err) => {
+        console.warn(`Firestore sync warning for ${emp.name}:`, err);
+      });
+    });
   }, [employees]);
 
   useEffect(() => {
     localStorage.setItem('sistema_ponto_geofence', JSON.stringify(geofence));
+    saveGeofenceToFirestore(geofence).catch((err) => {
+      console.warn('Firestore geofence sync warning:', err);
+    });
   }, [geofence]);
 
   // Fetch initial location on load

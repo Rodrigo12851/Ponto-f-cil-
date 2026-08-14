@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Camera, X, CheckCircle, MapPin, RefreshCw, AlertCircle, ShieldCheck, Sparkles, Zap, AlertTriangle, AlertOctagon, UserCheck, UserX } from 'lucide-react';
+import { Camera, X, CheckCircle, MapPin, RefreshCw, AlertCircle, ShieldCheck, Sparkles, Zap, AlertTriangle, AlertOctagon, UserCheck, UserX, Database, Lock } from 'lucide-react';
 import { Employee, LocationData, PunchType } from '../types';
 import { getPunchTypeLabel } from '../utils/timeFormatters';
 import { requestScreenWakeLock, releaseScreenWakeLock } from '../utils/wakeLock';
@@ -37,7 +37,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
   const [bioError, setBioError] = useState<string | null>(null);
   const [bioErrorCode, setBioErrorCode] = useState<string | null>(null);
   const [bioStageFailed, setBioStageFailed] = useState<string | null>(null);
-  const [bioQuality, setBioQuality] = useState<{ overallQuality?: number } | null>(null);
+  const [bioQuality, setBioQuality] = useState<{ overallQuality?: number; sharpnessScore?: number; brightnessScore?: number } | null>(null);
 
   // Play camera shutter sound using Web Audio API
   const playShutterSound = useCallback(() => {
@@ -101,7 +101,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
     try {
       let bioResult;
       if (employee) {
-        // Multi-Stage Verification: Stage 1 (1 Face count + Quality) -> Stage 2 (Biometric Match)
+        // Multi-Stage Verification: Stage 1 (1 Face count + Quality/Sharpness Pre-filter) -> Stage 2 (Biometric Match against Firestore Avatar ONLY)
         bioResult = await verifyEmployeeFaceAgainstAvatar(dataUrl, employee, 90);
       } else {
         bioResult = await verifyAndRecognizeFace(dataUrl, employees, 90);
@@ -137,10 +137,10 @@ export const CameraModal: React.FC<CameraModalProps> = ({
             sharpnessScore: bioResult.quality.sharpnessScore,
             contrastScore: bioResult.quality.contrastScore,
             symmetryScore: bioResult.quality.symmetryScore,
-            overallQuality: bioResult.quality.overallScore,
+            overallQuality: bioResult.quality.overallQuality,
           } : undefined,
           photoSnapshot: dataUrl,
-          deviceLabel: 'Smartphone Pessoal (App Ponto)',
+          deviceLabel: 'Smartphone Pessoal (App Ponto - Firestore Avatar Match)',
           ipOrLocation: location.address || 'Localização Ponto',
         });
       } else {
@@ -165,16 +165,16 @@ export const CameraModal: React.FC<CameraModalProps> = ({
           faceCount: 1,
           stageFailed: 'NONE',
           errorCode: 'NONE',
-          debugInfo: `Autenticado com ${bioResult.confidence || 96}% de precisão`,
+          debugInfo: `Autenticado com ${bioResult.confidence || 96}% contra avatar do Firestore`,
           qualityMetrics: bioResult.quality ? {
             brightnessScore: bioResult.quality.brightnessScore,
             sharpnessScore: bioResult.quality.sharpnessScore,
             contrastScore: bioResult.quality.contrastScore,
             symmetryScore: bioResult.quality.symmetryScore,
-            overallQuality: bioResult.quality.overallScore,
+            overallQuality: bioResult.quality.overallQuality,
           } : undefined,
           photoSnapshot: dataUrl,
-          deviceLabel: 'Smartphone Pessoal (App Ponto)',
+          deviceLabel: 'Smartphone Pessoal (App Ponto - Firestore Avatar Match)',
           ipOrLocation: location.address || 'Localização Ponto',
         });
       }
@@ -196,11 +196,11 @@ export const CameraModal: React.FC<CameraModalProps> = ({
         errorCode: 'IMAGE_ERROR',
         failureReason: 'Erro durante o processamento do quadro de imagem.',
         photoSnapshot: dataUrl,
-        deviceLabel: 'Smartphone Pessoal (App Ponto)',
+        deviceLabel: 'Smartphone Pessoal (App Ponto - Firestore Avatar Match)',
         ipOrLocation: location.address || 'Localização Ponto',
       });
     }
-  }, [playShutterSound, stream, employee, employees]);
+  }, [playShutterSound, stream, employee, employees, location]);
 
   // Keep screen awake while modal is open
   useEffect(() => {
@@ -286,7 +286,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
   const handleConfirmAndSave = () => {
     if (!capturedImage) return;
     if (bioError || bioConfidence < 90) {
-      alert('REGISTRO BLOQUEADO!\n\nFace not recognized: A biometria facial não foi aprovada com o mínimo exigido de 90% de compatibilidade.');
+      alert('ACESSO E REGISTRO BLOQUEADOS!\n\nFace not recognized: O rosto capturado não correspondeu ao avatar cadastrado no Firestore com o mínimo de 90% de similaridade.');
       return;
     }
     if (!location.inGeofence) {
@@ -319,6 +319,9 @@ export const CameraModal: React.FC<CameraModalProps> = ({
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
           <span className="text-xs font-semibold text-slate-200">
             Validação Facial • {getPunchTypeLabel(punchType)}
+          </span>
+          <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-500/30 flex items-center gap-1 font-mono">
+            <Database className="w-2.5 h-2.5" /> Firestore Avatar
           </span>
         </div>
         <button
@@ -355,7 +358,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
               </div>
             )}
 
-            {/* Facial Recognition Overlay Guide Oval */}
+            {/* Facial Recognition Overlay Guide Oval with Pre-Filter Requirements */}
             {!cameraError && (
               <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-4">
                 <div className="w-56 h-72 border-4 border-blue-400/80 rounded-[50%] flex items-center justify-center relative shadow-[0_0_40px_rgba(59,130,246,0.3)]">
@@ -363,7 +366,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
                   {/* Status Badge */}
                   <div className="absolute -top-3.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-lg bg-blue-600 text-white border border-blue-400">
                     <Zap className="w-3 h-3 text-amber-300 fill-amber-300" />
-                    <span>Posicione o Rosto no Círculo</span>
+                    <span>Enquadre 1 Rosto Nítido no Círculo</span>
                   </div>
 
                   {/* Target Corner Marks */}
@@ -371,6 +374,12 @@ export const CameraModal: React.FC<CameraModalProps> = ({
                   <div className="absolute -top-2 -right-2 w-6 h-6 border-t-2 border-r-2 border-blue-400 rounded-tr-lg"></div>
                   <div className="absolute -bottom-2 -left-2 w-6 h-6 border-b-2 border-l-2 border-blue-400 rounded-bl-lg"></div>
                   <div className="absolute -bottom-2 -right-2 w-6 h-6 border-b-2 border-r-2 border-blue-400 rounded-br-lg"></div>
+                </div>
+
+                {/* Pre-filter Notice Pill */}
+                <div className="mt-3 bg-slate-950/80 backdrop-blur-md px-3 py-1 rounded-full border border-slate-700 text-[10px] text-slate-300 font-medium flex items-center gap-1.5">
+                  <ShieldCheck className="w-3 h-3 text-blue-400" />
+                  Pré-filtro rigoroso: 1 único rosto humano nítido + avatar Firestore
                 </div>
               </div>
             )}
@@ -405,7 +414,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
             </div>
           </>
         ) : (
-          /* Captured Photo Preview with Side-by-Side Avatar Biometric Comparison */
+          /* Captured Photo Preview with Side-by-Side Firestore Avatar Biometric Comparison */
           <div className="relative w-full h-full bg-slate-900 flex flex-col items-center justify-center overflow-hidden">
             <img
               src={capturedImage}
@@ -413,18 +422,20 @@ export const CameraModal: React.FC<CameraModalProps> = ({
               className="w-full h-full object-cover filter brightness-95 contrast-105"
             />
 
-            {/* Official Avatar Picture-in-Picture for Direct Comparison */}
+            {/* Official Firestore Avatar Picture-in-Picture for Direct Visual Comparison */}
             {employee && employee.avatar && (
-              <div className="absolute bottom-3 left-3 bg-slate-950/90 p-2 rounded-2xl border-2 border-slate-700 backdrop-blur-md shadow-2xl flex items-center gap-2.5 max-w-[210px]">
-                <div className="w-11 h-11 rounded-xl overflow-hidden border border-slate-600 shrink-0">
+              <div className="absolute bottom-3 left-3 bg-slate-950/95 p-2 rounded-2xl border-2 border-indigo-500/50 backdrop-blur-md shadow-2xl flex items-center gap-2.5 max-w-[220px]">
+                <div className="w-11 h-11 rounded-xl overflow-hidden border-2 border-indigo-400 shrink-0">
                   <img
                     src={employee.avatar}
-                    alt="Foto Oficial de Cadastro"
+                    alt="Avatar Oficial do Firestore"
                     className="w-full h-full object-cover"
                   />
                 </div>
                 <div className="overflow-hidden text-left">
-                  <p className="text-[10px] uppercase font-black tracking-wider text-slate-400">Avatar Oficial</p>
+                  <p className="text-[9px] uppercase font-black tracking-wider text-indigo-300 flex items-center gap-1">
+                    <Database className="w-2.5 h-2.5" /> Avatar Firestore
+                  </p>
                   <p className="text-xs font-bold text-white truncate">{employee.name.split(' ')[0]}</p>
                 </div>
               </div>
@@ -432,37 +443,40 @@ export const CameraModal: React.FC<CameraModalProps> = ({
 
             {/* Biometric Status Header Overlay */}
             {isVerifyingBio ? (
-              <div className="absolute top-4 bg-indigo-600/95 text-white px-4 py-2 rounded-2xl text-xs font-extrabold flex items-center gap-2 shadow-2xl border border-indigo-400 backdrop-blur-md">
+              <div className="absolute top-4 bg-indigo-600/95 text-white px-4 py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 shadow-2xl border border-indigo-400 backdrop-blur-md">
                 <RefreshCw className="w-4 h-4 animate-spin text-indigo-200" />
-                <span>Processando Validação Facial Multi-Etapas...</span>
+                <span>Executando Pré-Filtro & Comparação com Firestore...</span>
               </div>
             ) : bioError ? (
-              <div className="absolute top-4 inset-x-3 bg-rose-950/95 text-rose-200 border-2 border-rose-500 px-4 py-3 rounded-2xl text-xs font-bold flex items-start gap-3 shadow-2xl backdrop-blur-md animate-in slide-in-from-top-2">
+              <div className="absolute top-3 inset-x-3 bg-rose-950/95 text-rose-200 border-2 border-rose-500 px-4 py-3 rounded-2xl text-xs font-bold flex items-start gap-3 shadow-2xl backdrop-blur-md animate-in slide-in-from-top-2">
                 <AlertOctagon className="w-6 h-6 text-rose-400 shrink-0 mt-0.5" />
                 <div className="text-left flex-1">
                   <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
                     <p className="font-black text-white uppercase text-[10px] tracking-wide flex items-center gap-1">
                       <UserX className="w-3.5 h-3.5 text-rose-400" />
                       {bioStageFailed === 'FACE_COUNT'
-                        ? 'Etapa 1: Presença Facial'
+                        ? 'Pré-Filtro: Contagem Facial'
                         : bioStageFailed === 'IMAGE_QUALITY'
-                        ? 'Etapa 1: Qualidade da Imagem'
-                        : 'Etapa 2: Biometria Facial'}
+                        ? 'Pré-Filtro: Nitidez & Qualidade'
+                        : 'Comparação: Avatar Firestore'}
                     </p>
                     {bioStageFailed === 'BIOMETRIC_MATCH' && (
-                      <span className="text-[10px] bg-rose-900 text-rose-200 font-mono px-2 py-0.5 rounded-md border border-rose-700">
+                      <span className="text-[10px] bg-rose-900 text-rose-200 font-mono px-2 py-0.5 rounded-md border border-rose-700 font-bold">
                         Similaridade: {bioConfidence}% (Exigido: ≥90%)
                       </span>
                     )}
                   </div>
                   <p className="text-[11px] leading-snug text-rose-200">{bioError}</p>
+                  <p className="text-[10px] text-rose-400 font-black uppercase tracking-wider mt-1.5 flex items-center gap-1">
+                    <Lock className="w-3 h-3 text-rose-400" /> ACESSO E REGISTRO BLOQUEADOS
+                  </p>
                 </div>
               </div>
             ) : (
               <div className="absolute top-4 bg-emerald-500 text-slate-950 px-4 py-2 rounded-2xl text-xs font-black flex items-center gap-2 shadow-2xl border-2 border-emerald-300 animate-in zoom-in-95">
                 <CheckCircle className="w-4 h-4 text-slate-950" />
                 <UserCheck className="w-4 h-4 text-slate-950" />
-                <span>Validação Aprovada • Face ID ({bioConfidence}% ≥ 90%)</span>
+                <span>Validação Aprovada • Avatar Firestore ({bioConfidence}% ≥ 90%)</span>
               </div>
             )}
           </div>
@@ -483,7 +497,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
               <Camera className="w-5 h-5" /> TIRAR FOTO DO PONTO
             </button>
             <p className="text-[11px] text-slate-400 font-medium text-center">
-              Posicione-se confortavelmente e clique no botão acima quando estiver pronto.
+              Posicione 1 único rosto no centro, com boa iluminação, e clique no botão acima.
             </p>
           </div>
         ) : (
@@ -502,7 +516,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
                 onClick={handleConfirmAndSave}
                 className={`flex-2 py-3.5 font-extrabold text-sm rounded-2xl shadow-lg transition flex items-center justify-center gap-2 ${
                   bioError || isVerifyingBio || bioConfidence < 90
-                    ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700 opacity-60'
+                    ? 'bg-slate-900 text-slate-500 cursor-not-allowed border border-slate-800 opacity-60'
                     : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30 cursor-pointer active:scale-95'
                 }`}
               >
@@ -516,7 +530,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
                   </>
                 ) : bioError || bioConfidence < 90 ? (
                   <>
-                    <AlertTriangle className="w-4 h-4 text-rose-400" /> Ponto Bloqueado (Rosto Não Reconhecido)
+                    <Lock className="w-4 h-4 text-rose-400" /> Acesso Bloqueado (Não Reconhecido)
                   </>
                 ) : (
                   <>
@@ -529,7 +543,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
             {bioError && (
               <p className="text-[11px] text-rose-400 font-bold text-center flex items-center justify-center gap-1.5">
                 <AlertOctagon className="w-3.5 h-3.5 text-rose-400" />
-                Bloqueado: Rosto não identificado ou similaridade &lt; 90% com a biometria cadastrada.
+                Acesso bloqueado: Rosto não identificado ou dissimilar com o avatar cadastrado no Firestore (&lt; 90%).
               </p>
             )}
           </div>
@@ -542,3 +556,4 @@ export const CameraModal: React.FC<CameraModalProps> = ({
     </div>
   );
 };
+

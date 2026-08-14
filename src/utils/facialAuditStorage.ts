@@ -1,4 +1,5 @@
 import { FacialAuditLog } from '../types';
+import { addFacialAuditLogToFirestore } from '../services/firebase';
 
 const AUDIT_STORAGE_KEY = 'sistema_ponto_facial_audits';
 
@@ -242,6 +243,11 @@ export function addFacialAuditLog(
   // Limit to most recent 200 logs to preserve storage
   const trimmed = updatedLogs.slice(0, 200);
   saveFacialAuditLogs(trimmed);
+
+  // Sync to Firestore asynchronously
+  addFacialAuditLogToFirestore(newLog).catch((err) => {
+    console.warn('Could not sync audit log to Firestore:', err);
+  });
 
   return newLog;
 }

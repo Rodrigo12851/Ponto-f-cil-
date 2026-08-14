@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Camera, X, CheckCircle, MapPin, RefreshCw, AlertCircle, ShieldCheck, Sparkles, Timer, Zap, AlertTriangle, AlertOctagon, UserCheck, UserX } from 'lucide-react';
+import { Camera, X, CheckCircle, MapPin, RefreshCw, AlertCircle, ShieldCheck, Sparkles, Zap, AlertTriangle, AlertOctagon, UserCheck, UserX } from 'lucide-react';
 import { Employee, LocationData, PunchType } from '../types';
 import { getPunchTypeLabel } from '../utils/timeFormatters';
 import { requestScreenWakeLock, releaseScreenWakeLock } from '../utils/wakeLock';
@@ -28,19 +28,12 @@ export const CameraModal: React.FC<CameraModalProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [isAiChecking, setIsAiChecking] = useState<boolean>(true);
-  const [faceDetected, setFaceDetected] = useState<boolean>(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [countdown, setCountdown] = useState<number | null>(null); // 2, 1, 0
-  const [countdownProgress, setCountdownProgress] = useState<number>(0); // 0% to 100%
   const [isFlashing, setIsFlashing] = useState<boolean>(false);
   const [isVerifyingBio, setIsVerifyingBio] = useState<boolean>(false);
   const [bioConfidence, setBioConfidence] = useState<number>(0);
   const [bioError, setBioError] = useState<string | null>(null);
-
-  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Play camera shutter sound using Web Audio API
   const playShutterSound = useCallback(() => {
@@ -64,11 +57,6 @@ export const CameraModal: React.FC<CameraModalProps> = ({
   }, []);
 
   const handleTakeSnapshot = useCallback(async () => {
-    // Clear any pending countdowns
-    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
-    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
-    setCountdown(null);
-    setCountdownProgress(0);
     setBioError(null);
     setBioConfidence(0);
 
@@ -105,7 +93,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
     try {
       let bioResult;
       if (employee) {
-        // Explicit 1:1 Biometric Comparison against the registered employee's official avatar
+        // Explicit 1:1 Biometric Comparison against the registered employee's Face ID profile / avatar
         bioResult = await verifyEmployeeFaceAgainstAvatar(dataUrl, employee, 90);
       } else {
         // 1:N Biometric Comparison against registered database with strict 90% threshold
@@ -116,7 +104,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
 
       if (!bioResult.success || (bioResult.confidence !== undefined && bioResult.confidence < 90)) {
         setBioConfidence(bioResult.confidence || 0);
-        setBioError(bioResult.errorMessage || 'Face not recognized. Rosto não reconhecido (Similaridade abaixo de 90%).');
+        setBioError(bioResult.errorMessage || 'Face not recognized. Rosto não reconhecido com a biometria cadastrada.');
       } else {
         setBioConfidence(bioResult.confidence || 95);
         setBioError(null);
@@ -145,60 +133,17 @@ export const CameraModal: React.FC<CameraModalProps> = ({
       stopCamera();
       setCapturedImage(null);
       setCameraError(null);
-      setCountdown(null);
-      setCountdownProgress(0);
       setBioError(null);
       setBioConfidence(0);
-      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
-      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
       return;
     }
 
     startCamera();
 
-    // Stabilize face detection after camera opens (0.5s) then start 2s auto-capture timer
-    const detectTimer = setTimeout(() => {
-      setIsAiChecking(false);
-      setFaceDetected(true);
-    }, 500);
-
     return () => {
-      clearTimeout(detectTimer);
-      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
-      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
       stopCamera();
     };
   }, [isOpen]);
-
-  // 2-Second Auto Capture logic when face is detected and centered
-  useEffect(() => {
-    if (isOpen && faceDetected && !capturedImage && !cameraError) {
-      setCountdown(2);
-      setCountdownProgress(0);
-
-      const startTime = Date.now();
-      const totalDuration = 2000; // 2 seconds
-
-      // Smooth progress update every 50ms
-      progressIntervalRef.current = setInterval(() => {
-        const elapsed = Date.now() - startTime;
-        const progress = Math.min(100, Math.round((elapsed / totalDuration) * 100));
-        setCountdownProgress(progress);
-
-        const remainingSecs = Math.max(1, Math.ceil((totalDuration - elapsed) / 1000));
-        setCountdown(remainingSecs);
-
-        if (elapsed >= totalDuration) {
-          if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
-          handleTakeSnapshot();
-        }
-      }, 50);
-
-      return () => {
-        if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
-      };
-    }
-  }, [isOpen, faceDetected, capturedImage, cameraError, handleTakeSnapshot]);
 
   // Ensure video element receives stream whenever it mounts or when capturedImage becomes null
   useEffect(() => {
@@ -214,8 +159,6 @@ export const CameraModal: React.FC<CameraModalProps> = ({
 
   const startCamera = async () => {
     setCameraError(null);
-    setIsAiChecking(true);
-    setFaceDetected(false);
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -248,25 +191,16 @@ export const CameraModal: React.FC<CameraModalProps> = ({
 
   const handleRetakePhoto = () => {
     setCapturedImage(null);
-    setCountdown(null);
-    setCountdownProgress(0);
-    setIsAiChecking(true);
-    setFaceDetected(false);
     setBioError(null);
     setBioConfidence(0);
     stopCamera();
     startCamera();
-
-    setTimeout(() => {
-      setIsAiChecking(false);
-      setFaceDetected(true);
-    }, 600);
   };
 
   const handleConfirmAndSave = () => {
     if (!capturedImage) return;
     if (bioError || bioConfidence < 90) {
-      alert('REGISTRO BLOQUEADO!\n\nFace not recognized: A biometria facial não foi aprovada pelo sistema com o mínimo exigido de 90% de compatibilidade.');
+      alert('REGISTRO BLOQUEADO!\n\nFace not recognized: A biometria facial não foi aprovada com o mínimo exigido de 90% de compatibilidade.');
       return;
     }
     if (!location.inGeofence) {
@@ -280,7 +214,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
       onCapture(capturedImage);
       setIsSubmitting(false);
       onClose();
-    }, 600);
+    }, 500);
   };
 
   if (!isOpen) return null;
@@ -298,7 +232,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
         <div className="flex items-center gap-2 bg-slate-900/80 px-3.5 py-1.5 rounded-full border border-slate-700">
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
           <span className="text-xs font-semibold text-slate-200">
-            Validação Facial Estrita (≥ 90%) • {getPunchTypeLabel(punchType)}
+            Validação Facial • {getPunchTypeLabel(punchType)}
           </span>
         </div>
         <button
@@ -310,7 +244,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
       </div>
 
       {/* Camera Viewport / Preview */}
-      <div className="relative w-full max-w-md h-[400px] sm:h-[450px] bg-black rounded-3xl overflow-hidden border-2 border-slate-700 shadow-2xl flex items-center justify-center my-auto">
+      <div className="relative w-full max-w-md h-[390px] sm:h-[430px] bg-black rounded-3xl overflow-hidden border-2 border-slate-700 shadow-2xl flex items-center justify-center my-auto">
         {!capturedImage ? (
           <>
             {/* Live Video Feed */}
@@ -335,60 +269,22 @@ export const CameraModal: React.FC<CameraModalProps> = ({
               </div>
             )}
 
-            {/* Facial Recognition Overlay Oval & 2s Countdown */}
+            {/* Facial Recognition Overlay Guide Oval */}
             {!cameraError && (
               <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-4">
-                <div
-                  className={`w-56 h-72 border-4 rounded-[50%] transition-colors duration-300 flex items-center justify-center relative shadow-[0_0_50px_rgba(37,99,235,0.3)] ${
-                    faceDetected
-                      ? 'border-emerald-400 shadow-emerald-500/30'
-                      : 'border-blue-500 animate-pulse'
-                  }`}
-                >
+                <div className="w-56 h-72 border-4 border-blue-400/80 rounded-[50%] flex items-center justify-center relative shadow-[0_0_40px_rgba(59,130,246,0.3)]">
+                  
                   {/* Status Badge */}
-                  <div className={`absolute -top-3.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-lg ${
-                    faceDetected 
-                      ? 'bg-emerald-500 text-slate-950 border border-emerald-300' 
-                      : 'bg-indigo-600 text-white border border-indigo-400'
-                  }`}>
-                    {isAiChecking ? (
-                      <>
-                        <Sparkles className="w-3 h-3 animate-spin" />
-                        <span>Centralizando Rosto...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Zap className="w-3 h-3 text-slate-950 fill-slate-950" />
-                        <span>Rosto Enquadrado</span>
-                      </>
-                    )}
+                  <div className="absolute -top-3.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-lg bg-blue-600 text-white border border-blue-400">
+                    <Zap className="w-3 h-3 text-amber-300 fill-amber-300" />
+                    <span>Posicione o Rosto no Círculo</span>
                   </div>
 
-                  {/* 2-Second Countdown Circular HUD */}
-                  {faceDetected && countdown !== null && (
-                    <div className="bg-slate-950/85 backdrop-blur-md border-2 border-emerald-400 rounded-2xl px-4 py-2 flex flex-col items-center gap-1 shadow-2xl animate-in zoom-in-95">
-                      <div className="flex items-center gap-1.5 text-amber-300 text-xs font-black">
-                        <Timer className="w-4 h-4 text-amber-400 animate-spin" />
-                        <span>Captura Automática em</span>
-                      </div>
-                      <div className="text-2xl font-mono font-black text-emerald-400 tracking-tight flex items-center gap-1">
-                        <span>{countdown}s</span>
-                      </div>
-                      {/* Linear Progress bar */}
-                      <div className="w-28 h-1.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700 mt-0.5">
-                        <div
-                          className="h-full bg-gradient-to-r from-amber-400 to-emerald-400 transition-all duration-75"
-                          style={{ width: `${countdownProgress}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  )}
-
                   {/* Target Corner Marks */}
-                  <div className="absolute -top-2 -left-2 w-6 h-6 border-t-2 border-l-2 border-emerald-400 rounded-tl-lg"></div>
-                  <div className="absolute -top-2 -right-2 w-6 h-6 border-t-2 border-r-2 border-emerald-400 rounded-tr-lg"></div>
-                  <div className="absolute -bottom-2 -left-2 w-6 h-6 border-b-2 border-l-2 border-emerald-400 rounded-bl-lg"></div>
-                  <div className="absolute -bottom-2 -right-2 w-6 h-6 border-b-2 border-r-2 border-emerald-400 rounded-br-lg"></div>
+                  <div className="absolute -top-2 -left-2 w-6 h-6 border-t-2 border-l-2 border-blue-400 rounded-tl-lg"></div>
+                  <div className="absolute -top-2 -right-2 w-6 h-6 border-t-2 border-r-2 border-blue-400 rounded-tr-lg"></div>
+                  <div className="absolute -bottom-2 -left-2 w-6 h-6 border-b-2 border-l-2 border-blue-400 rounded-bl-lg"></div>
+                  <div className="absolute -bottom-2 -right-2 w-6 h-6 border-b-2 border-r-2 border-blue-400 rounded-br-lg"></div>
                 </div>
               </div>
             )}
@@ -452,7 +348,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
             {isVerifyingBio ? (
               <div className="absolute top-4 bg-indigo-600/95 text-white px-4 py-2 rounded-2xl text-xs font-extrabold flex items-center gap-2 shadow-2xl border border-indigo-400 backdrop-blur-md">
                 <RefreshCw className="w-4 h-4 animate-spin text-indigo-200" />
-                <span>Comparando Biometria com Foto Oficial...</span>
+                <span>Validando Biometria com Foto Cadastrada...</span>
               </div>
             ) : bioError ? (
               <div className="absolute top-4 inset-x-3 bg-rose-950/95 text-rose-200 border-2 border-rose-500 px-4 py-3 rounded-2xl text-xs font-bold flex items-center gap-3 shadow-2xl backdrop-blur-md animate-in slide-in-from-top-2">
@@ -488,13 +384,13 @@ export const CameraModal: React.FC<CameraModalProps> = ({
           <div className="w-full space-y-2">
             <button
               onClick={handleTakeSnapshot}
-              className="w-full py-4 bg-gradient-to-r from-emerald-500 via-emerald-600 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-sm sm:text-base rounded-2xl shadow-xl shadow-emerald-600/30 active:scale-[0.98] transition flex items-center justify-center gap-2 cursor-pointer border border-emerald-300"
+              disabled={!!cameraError}
+              className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-base rounded-2xl shadow-xl shadow-blue-600/30 active:scale-[0.98] transition flex items-center justify-center gap-2 cursor-pointer border border-blue-400 disabled:opacity-50"
             >
-              <Camera className="w-5 h-5" /> CAPTURAR AGORA OU AGUARDE 2s
+              <Camera className="w-5 h-5" /> TIRAR FOTO DO PONTO
             </button>
-            <p className="text-[11px] text-emerald-300 font-semibold text-center flex items-center justify-center gap-1">
-              <Zap className="w-3 h-3 text-amber-400 fill-amber-400" />
-              Comparação facial estrita de 90% contra o avatar cadastrado
+            <p className="text-[11px] text-slate-400 font-medium text-center">
+              Posicione-se confortavelmente e clique no botão acima quando estiver pronto.
             </p>
           </div>
         ) : (
@@ -514,7 +410,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
                 className={`flex-2 py-3.5 font-extrabold text-sm rounded-2xl shadow-lg transition flex items-center justify-center gap-2 ${
                   bioError || isVerifyingBio || bioConfidence < 90
                     ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700 opacity-60'
-                    : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/30 cursor-pointer active:scale-95'
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30 cursor-pointer active:scale-95'
                 }`}
               >
                 {isSubmitting ? (
@@ -523,11 +419,11 @@ export const CameraModal: React.FC<CameraModalProps> = ({
                   </>
                 ) : isVerifyingBio ? (
                   <>
-                    <RefreshCw className="w-4 h-4 animate-spin" /> Comparando Biometria...
+                    <RefreshCw className="w-4 h-4 animate-spin" /> Validando Biometria...
                   </>
                 ) : bioError || bioConfidence < 90 ? (
                   <>
-                    <AlertTriangle className="w-4 h-4 text-rose-400" /> Ponto Bloqueado (Rosto Inválido)
+                    <AlertTriangle className="w-4 h-4 text-rose-400" /> Ponto Bloqueado (Rosto Não Reconhecido)
                   </>
                 ) : (
                   <>
@@ -540,7 +436,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
             {bioError && (
               <p className="text-[11px] text-rose-400 font-bold text-center flex items-center justify-center gap-1.5">
                 <AlertOctagon className="w-3.5 h-3.5 text-rose-400" />
-                Bloqueado: Rosto não identificado ou similaridade &lt; 90% com a foto do colaborador.
+                Bloqueado: Rosto não identificado ou similaridade &lt; 90% com a biometria cadastrada.
               </p>
             )}
           </div>

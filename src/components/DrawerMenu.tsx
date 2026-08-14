@@ -38,6 +38,7 @@ interface DrawerMenuProps {
   masterPassword?: string;
   onLogout?: () => void;
   onOpenTabletKiosk?: () => void;
+  onOpenFaceIdRegistration?: () => void;
 }
 
 export const DrawerMenu: React.FC<DrawerMenuProps> = ({
@@ -56,6 +57,7 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
   masterPassword = '123',
   onLogout,
   onOpenTabletKiosk,
+  onOpenFaceIdRegistration,
 }) => {
   const drawerFileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -209,13 +211,27 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
                 </p>
 
                 {currentUserRole === 'COLABORADOR' && (
-                  <button
-                    type="button"
-                    onClick={() => drawerFileInputRef.current?.click()}
-                    className="mt-1 text-[10px] text-blue-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <Camera className="w-3 h-3" /> Alterar foto do perfil
-                  </button>
+                  <div className="flex flex-col gap-1 mt-1.5">
+                    {onOpenFaceIdRegistration && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onOpenFaceIdRegistration();
+                          onClose();
+                        }}
+                        className="text-[10px] font-black bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition shadow-xs w-fit"
+                      >
+                        <Sparkles className="w-3 h-3 text-amber-300" /> Cadastrar Face ID 3D
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => drawerFileInputRef.current?.click()}
+                      className="text-[10px] text-slate-500 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <Camera className="w-3 h-3" /> Alterar foto simples
+                    </button>
+                  </div>
                 )}
                 {currentUserRole === 'GESTOR' && (
                   <span className="mt-1 text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded-full inline-block">

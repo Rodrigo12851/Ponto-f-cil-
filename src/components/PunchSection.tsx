@@ -18,6 +18,7 @@ interface PunchSectionProps {
   onDirectPunch?: (type: PunchType) => void;
   onRefreshLocation: () => void;
   onUpdateGeofence?: (updatedGeofence: CompanyGeofence) => void;
+  onOpenFaceIdCalibration?: () => void;
 }
 
 export const PunchSection: React.FC<PunchSectionProps> = ({
@@ -29,6 +30,7 @@ export const PunchSection: React.FC<PunchSectionProps> = ({
   onDirectPunch,
   onRefreshLocation,
   onUpdateGeofence,
+  onOpenFaceIdCalibration,
 }) => {
   const [time, setTime] = useState({
     hhmm: '00:00',
@@ -234,15 +236,41 @@ export const PunchSection: React.FC<PunchSectionProps> = ({
             <span>BATA A 1ª ENTRADA ANTES DE REGISTRAR A SAÍDA FINAL.</span>
           </div>
         ) : (
-          <button
-            onClick={handleRegisterClick}
-            className="w-full py-4 px-6 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-base rounded-2xl shadow-lg shadow-emerald-500/30 active:scale-[0.98] transition-all flex items-center justify-center gap-3 cursor-pointer group mb-5"
-          >
-            <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <Camera className="w-5 h-5 text-white" />
+          <div className="mb-5 space-y-2">
+            <button
+              onClick={handleRegisterClick}
+              className="w-full py-4 px-6 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-base rounded-2xl shadow-lg shadow-emerald-500/30 active:scale-[0.98] transition-all flex items-center justify-center gap-3 cursor-pointer group"
+            >
+              <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <Camera className="w-5 h-5 text-white" />
+              </div>
+              <span>BATER {getPunchTypeLabel(selectedPunchType).toUpperCase()} (COM CÂMERA)</span>
+            </button>
+
+            {/* 3D Face ID Status & Calibration Link */}
+            <div className="flex items-center justify-between px-2 pt-1">
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>
+                  Face ID 3D:{' '}
+                  <strong className="text-slate-800">
+                    {employee.facialPhotos && employee.facialPhotos.length >= 3
+                      ? `${employee.facialPhotos.length} ângulos calibrados`
+                      : 'Avatar cadastrado'}
+                  </strong>
+                </span>
+              </div>
+              {onOpenFaceIdCalibration && (
+                <button
+                  type="button"
+                  onClick={onOpenFaceIdCalibration}
+                  className="text-[11px] font-black text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Sparkles className="w-3 h-3 text-amber-500" /> Calibrar Face ID 3D
+                </button>
+              )}
             </div>
-            <span>BATER {getPunchTypeLabel(selectedPunchType).toUpperCase()} (COM CÂMERA)</span>
-          </button>
+          </div>
         )}
 
         {/* Geolocation Info Card */}

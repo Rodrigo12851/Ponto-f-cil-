@@ -33,6 +33,7 @@ import { Navbar } from './components/Navbar';
 import { DrawerMenu } from './components/DrawerMenu';
 import { LoginScreen } from './components/LoginScreen';
 import { TabletKioskModal } from './components/TabletKioskModal';
+import { FacialRegistrationModal } from './components/FacialRegistrationModal';
 
 export default function App() {
   // Authentication State
@@ -168,6 +169,7 @@ export default function App() {
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
   const [showEspelhoModal, setShowEspelhoModal] = useState<boolean>(false);
   const [showTabletKiosk, setShowTabletKiosk] = useState<boolean>(false);
+  const [facialRegistrationEmp, setFacialRegistrationEmp] = useState<Employee | null>(null);
 
   // Screen Wake Lock Effect in App.tsx to keep device screen permanently awake when Tablet Kiosk is active
   useEffect(() => {
@@ -708,6 +710,7 @@ export default function App() {
                             setGeofence(newGf);
                             fetchCurrentLocation();
                           }}
+                          onOpenFaceIdCalibration={() => setFacialRegistrationEmp(currentEmployee)}
                         />
                       )}
 
@@ -818,7 +821,23 @@ export default function App() {
           masterPassword={ownerSettings.masterPassword}
           onLogout={handleLogout}
           onOpenTabletKiosk={() => setShowTabletKiosk(true)}
+          onOpenFaceIdRegistration={() => setFacialRegistrationEmp(currentEmployee)}
         />
+
+        {/* 3D Guided Facial Registration Modal */}
+        {facialRegistrationEmp && (
+          <FacialRegistrationModal
+            employee={facialRegistrationEmp}
+            onSavePhotos={(employeeId, photos) => {
+              handleUpdateEmployee(employeeId, {
+                facialPhotos: photos,
+                avatar: photos[0] || facialRegistrationEmp.avatar,
+              });
+              setFacialRegistrationEmp(null);
+            }}
+            onClose={() => setFacialRegistrationEmp(null)}
+          />
+        )}
 
         {/* Bottom Navigation Navbar */}
         <Navbar

@@ -80,7 +80,7 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [faceConfidence, setFaceConfidence] = useState<number>(98);
   const [faceErrorDetails, setFaceErrorDetails] = useState<{
-    type: 'NO_FACE_DETECTED' | 'FACE_NOT_MATCHED' | 'IMAGE_ERROR';
+    type: 'NO_FACE_DETECTED' | 'MULTIPLE_FACES_DETECTED' | 'INSUFFICIENT_QUALITY' | 'FACE_NOT_MATCHED' | 'IMAGE_ERROR';
     message: string;
     debug?: string;
   }>({
@@ -1127,12 +1127,20 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                 <div className="space-y-2">
                   <span className="text-xs font-black uppercase tracking-wider text-rose-300 bg-rose-950 px-3.5 py-1 rounded-full border border-rose-800 inline-block">
                     {faceErrorDetails.type === 'NO_FACE_DETECTED'
-                      ? 'Nenhum Rosto Humano Identificado'
-                      : 'Rosto Não Compatível'}
+                      ? 'Etapa 1: Nenhum Rosto Identificado'
+                      : faceErrorDetails.type === 'MULTIPLE_FACES_DETECTED'
+                      ? 'Etapa 1: Múltiplos Rostos Detectados'
+                      : faceErrorDetails.type === 'INSUFFICIENT_QUALITY'
+                      ? 'Etapa 1: Qualidade Insuficiente'
+                      : 'Etapa 2: Biometria Não Compatível'}
                   </span>
                   <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
                     {faceErrorDetails.type === 'NO_FACE_DETECTED'
-                      ? 'Câmera Obstruída / Sem Rosto'
+                      ? 'Sem Rosto Visível'
+                      : faceErrorDetails.type === 'MULTIPLE_FACES_DETECTED'
+                      ? 'Apenas 1 Pessoa Permitida'
+                      : faceErrorDetails.type === 'INSUFFICIENT_QUALITY'
+                      ? 'Ajuste de Imagem Necessário'
                       : 'Colaborador Não Reconhecido'}
                   </h3>
                   <p className="text-sm text-slate-300 font-medium leading-relaxed max-w-sm mx-auto">
@@ -1144,13 +1152,13 @@ export const TabletKioskModal: React.FC<TabletKioskModalProps> = ({
                 <div className="bg-slate-950/90 rounded-2xl p-4 border border-slate-800 text-left space-y-2 text-xs text-slate-300">
                   <p className="font-extrabold text-amber-400 uppercase tracking-wide text-[11px] flex items-center gap-1.5">
                     <ShieldCheck className="w-4 h-4 text-amber-400" />
-                    Regras de Segurança Biométrica:
+                    Regras de Validação Facial:
                   </p>
                   <ul className="space-y-1 text-slate-400 list-disc list-inside">
-                    <li>Não coloque as mãos, dedos ou papéis na frente da lente.</li>
-                    <li>Posicione seu rosto centralizado no círculo de enquadramento.</li>
-                    <li>Esteja em ambiente com iluminação frontal adequada.</li>
-                    <li>Mantenha os olhos visíveis e sem óculos escuros.</li>
+                    <li><strong>Apenas 1 pessoa:</strong> Certifique-se de que ninguém mais está atrás ou ao lado.</li>
+                    <li><strong>Sem obstrução:</strong> Não coloque as mãos, dedos ou papéis na frente da lente.</li>
+                    <li><strong>Centralização:</strong> Posicione seu rosto centralizado no círculo guia.</li>
+                    <li><strong>Iluminação & Foco:</strong> Evite luz muito fraca ou claridade direta ofuscando a câmera.</li>
                   </ul>
                 </div>
 

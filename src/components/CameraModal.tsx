@@ -34,6 +34,9 @@ export const CameraModal: React.FC<CameraModalProps> = ({
   const [isVerifyingBio, setIsVerifyingBio] = useState<boolean>(false);
   const [bioConfidence, setBioConfidence] = useState<number>(0);
   const [bioError, setBioError] = useState<string | null>(null);
+  const [bioErrorCode, setBioErrorCode] = useState<string | null>(null);
+  const [bioStageFailed, setBioStageFailed] = useState<string | null>(null);
+  const [bioQuality, setBioQuality] = useState<{ overallQuality?: number } | null>(null);
 
   // Play camera shutter sound using Web Audio API
   const playShutterSound = useCallback(() => {
@@ -58,6 +61,9 @@ export const CameraModal: React.FC<CameraModalProps> = ({
 
   const handleTakeSnapshot = useCallback(async () => {
     setBioError(null);
+    setBioErrorCode(null);
+    setBioStageFailed(null);
+    setBioQuality(null);
     setBioConfidence(0);
 
     setIsFlashing(true);
@@ -84,6 +90,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
 
     if (!dataUrl) {
       setBioError('Face not recognized. Não foi possível capturar o quadro da câmera.');
+      setBioErrorCode('IMAGE_ERROR');
       return;
     }
 
@@ -93,10 +100,9 @@ export const CameraModal: React.FC<CameraModalProps> = ({
     try {
       let bioResult;
       if (employee) {
-        // Explicit 1:1 Biometric Comparison against the registered employee's Face ID profile / avatar
+        // Multi-Stage Verification: Stage 1 (1 Face count + Quality) -> Stage 2 (Biometric Match)
         bioResult = await verifyEmployeeFaceAgainstAvatar(dataUrl, employee, 90);
       } else {
-        // 1:N Biometric Comparison against registered database with strict 90% threshold
         bioResult = await verifyAndRecognizeFace(dataUrl, employees, 90);
       }
 
@@ -104,15 +110,22 @@ export const CameraModal: React.FC<CameraModalProps> = ({
 
       if (!bioResult.success || (bioResult.confidence !== undefined && bioResult.confidence < 90)) {
         setBioConfidence(bioResult.confidence || 0);
-        setBioError(bioResult.errorMessage || 'Face not recognized. Rosto não reconhecido com a biometria cadastrada.');
+        setBioError(bioResult.errorMessage || 'Face not recognized. Validação facial reprovada.');
+        setBioErrorCode(bioResult.error || 'FACE_NOT_MATCHED');
+        setBioStageFailed(bioResult.stageFailed || null);
+        setBioQuality(bioResult.quality || null);
       } else {
         setBioConfidence(bioResult.confidence || 95);
         setBioError(null);
+        setBioErrorCode(null);
+        setBioStageFailed(null);
+        setBioQuality(bioResult.quality || null);
       }
     } catch (err) {
       setIsVerifyingBio(false);
       setBioConfidence(0);
       setBioError('Face not recognized. Erro ao processar validação biométrica.');
+      setBioErrorCode('IMAGE_ERROR');
     }
   }, [playShutterSound, stream, employee, employees]);
 
@@ -348,28 +361,35 @@ export const CameraModal: React.FC<CameraModalProps> = ({
             {isVerifyingBio ? (
               <div className="absolute top-4 bg-indigo-600/95 text-white px-4 py-2 rounded-2xl text-xs font-extrabold flex items-center gap-2 shadow-2xl border border-indigo-400 backdrop-blur-md">
                 <RefreshCw className="w-4 h-4 animate-spin text-indigo-200" />
-                <span>Validando Biometria com Foto Cadastrada...</span>
+                <span>Processando Validação Facial Multi-Etapas...</span>
               </div>
             ) : bioError ? (
-              <div className="absolute top-4 inset-x-3 bg-rose-950/95 text-rose-200 border-2 border-rose-500 px-4 py-3 rounded-2xl text-xs font-bold flex items-center gap-3 shadow-2xl backdrop-blur-md animate-in slide-in-from-top-2">
-                <AlertOctagon className="w-6 h-6 text-rose-400 shrink-0" />
+              <div className="absolute top-4 inset-x-3 bg-rose-950/95 text-rose-200 border-2 border-rose-500 px-4 py-3 rounded-2xl text-xs font-bold flex items-start gap-3 shadow-2xl backdrop-blur-md animate-in slide-in-from-top-2">
+                <AlertOctagon className="w-6 h-6 text-rose-400 shrink-0 mt-0.5" />
                 <div className="text-left flex-1">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
                     <p className="font-black text-white uppercase text-[10px] tracking-wide flex items-center gap-1">
-                      <UserX className="w-3.5 h-3.5 text-rose-400" /> Face Not Recognized
+                      <UserX className="w-3.5 h-3.5 text-rose-400" />
+                      {bioStageFailed === 'FACE_COUNT'
+                        ? 'Etapa 1: Presença Facial'
+                        : bioStageFailed === 'IMAGE_QUALITY'
+                        ? 'Etapa 1: Qualidade da Imagem'
+                        : 'Etapa 2: Biometria Facial'}
                     </p>
-                    <span className="text-[10px] bg-rose-900 text-rose-200 font-mono px-2 py-0.5 rounded-md border border-rose-700">
-                      Similaridade: {bioConfidence}% (Exigido: ≥90%)
-                    </span>
+                    {bioStageFailed === 'BIOMETRIC_MATCH' && (
+                      <span className="text-[10px] bg-rose-900 text-rose-200 font-mono px-2 py-0.5 rounded-md border border-rose-700">
+                        Similaridade: {bioConfidence}% (Exigido: ≥90%)
+                      </span>
+                    )}
                   </div>
-                  <p className="text-[11px] leading-snug text-rose-200 mt-0.5">{bioError}</p>
+                  <p className="text-[11px] leading-snug text-rose-200">{bioError}</p>
                 </div>
               </div>
             ) : (
               <div className="absolute top-4 bg-emerald-500 text-slate-950 px-4 py-2 rounded-2xl text-xs font-black flex items-center gap-2 shadow-2xl border-2 border-emerald-300 animate-in zoom-in-95">
                 <CheckCircle className="w-4 h-4 text-slate-950" />
                 <UserCheck className="w-4 h-4 text-slate-950" />
-                <span>Face Reconhecida ({bioConfidence}% • Aprovado ≥ 90%)</span>
+                <span>Validação Aprovada • Face ID ({bioConfidence}% ≥ 90%)</span>
               </div>
             )}
           </div>
